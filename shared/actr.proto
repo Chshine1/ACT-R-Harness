@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+import "google/protobuf/struct.proto";
+
+package actr;
+
+message BufferState {
+  string module_id = 1;
+  google.protobuf.Struct data = 2; // arbitrary structured state (objects, positions, etc.)
+}
+
+// BufferOperation represents a concrete command to be executed by a module.
+// It is always fully resolved (no neural or natural‑language leftovers) when modules receive it.
+message BufferOperation {
+  string target_module_id = 1;   // module that should execute this operation
+  string command = 2;
+  google.protobuf.Struct params = 3; // concrete parameters for the command
+}
+
+// ModuleSchema declares the commands a module accepts and the expected parameter shapes.
+message ModuleSchema {
+  string module_id = 1;
+  map<string, string> commandSchemas = 2; // command name -> JSON Schema / description
+}
+
+// ProceduralCondition encodes the condition part of a production rule.
+// It carries a structural condition, and optional neural semantics.
+// The actual evaluation (matching against BufferStates) is delegated to the NeuroCore,
+// allowing neural or fuzzy matching when `semantics` is present.
+message ProceduralCondition {
+  string rule_id = 1;
+  google.protobuf.Struct condition = 2;  // symbolic condition structure (e.g., {"type": "=", "slot": "color", "value": "red"})
+  google.protobuf.Struct semantics = 3;  // optional neural/semantic hints for matching (e.g., {"neuro:visual_similarity": "reddish"})
+}
+
+// NeuroAction is the unified action representation produced by procedural memory.
+//
+// Design (see docs/action-representation.md for full explanation):
+// - It intentionally avoids `oneof` to allow actions that mix symbolic commands with neural intentions.
+// - `commands` can contain concrete instructions or natural‑language parameter values.
+// - `semantics` use a key‑prefix convention to indicate how the NeuroCore should process them:
+//      * "command:"   – merge directly into commands
+//      * "neuro:"     – generate new commands via a neural decoder
+//      * "meta:"      – control the merging process (e.g., priority)
+// - After NeuroCore processing, the result is a list of fully concrete BufferOperations.
+message NeuroAction {
+  string rule_id = 1;
+  map<string, google.protobuf.Struct> commands = 2;   // explicit symbolic commands
+  map<string, google.protobuf.Struct> semantics = 3;  // neural/semantic payloads
+}

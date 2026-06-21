@@ -26,10 +26,10 @@ transferable behaviour – especially in complex resource‑management domains l
 
 The agent is built around three ACT‑R modules that communicate through buffers:
 
-| Module | Role |
-|--------|------|
-| **Goal buffer** | Holds the current intention (e.g., *survive*, *find most urgent problem*). |
-| **Declarative memory** | Stores and retrieves chunks (facts about resources, past events). |
+| Module                 | Role                                                                                                          |
+|------------------------|---------------------------------------------------------------------------------------------------------------|
+| **Goal buffer**        | Holds the current intention (e.g., *survive*, *find most urgent problem*).                                    |
+| **Declarative memory** | Stores and retrieves chunks (facts about resources, past events).                                             |
 | **Perception & Motor** | Encapsulates interaction with the environment – queries specific information and executes high‑level actions. |
 
 A **procedural system** matches production rules against the buffer state. Rules are
@@ -87,7 +87,7 @@ semantic engine.
 └── docs/                       # Additional documentation (future)
 ```
 
-Currently all prototype work happens in `python/`. The `dotnet/` directory is
+Currently, all prototype work happens in `python/`. The `dotnet/` directory is
 reserved for a future orchestration layer that will handle application runtime,
 configuration management, and monitoring – tasks where .NET’s tooling and
 performance are advantageous.
@@ -95,21 +95,24 @@ performance are advantageous.
 ## Technology Stack (Python side)
 
 ### Environment & Package Management
+
 - **Pixi** – fast, reproducible environment management built on conda‑forge.
 - **Python 3.13** – the minimum supported version is 3.11, but we develop on 3.13.
 - Dependencies: `pyyaml` for configuration; `pytest` + `decoy` for testing.
 
 ### Code Quality
+
 The project enforces strict typing and linting from day one:
 
-| Tool | Role |
-|------|------|
-| **mypy** | Full strict‑mode type checking (`disallow_any_*`, `warn_unused_*`). |
+| Tool        | Role                                                                                         |
+|-------------|----------------------------------------------------------------------------------------------|
+| **mypy**    | Full strict‑mode type checking (`disallow_any_*`, `warn_unused_*`).                          |
 | **pyright** | Additional type checking with even more paranoid rules (`reportUnused*`, `reportOptional*`). |
-| **ruff** | Fast Python linter replacing Flake8, isort, pyupgrade, and many plugins. |
-| **decoy** | Mypy plugin that provides type‑safe, ergonomic mocks for tests. |
+| **ruff**    | Fast Python linter replacing Flake8, isort, pyupgrade, and many plugins.                     |
+| **decoy**   | Mypy plugin that provides type‑safe, ergonomic mocks for tests.                              |
 
 All checks are available as Pixi tasks:
+
 - `pixi run typecheck` – runs both mypy and pyright.
 - `pixi run lint` – runs ruff.
 - `pixi run check` – runs both.
@@ -148,13 +151,25 @@ All checks are available as Pixi tasks:
 - [ ] Add .NET orchestration layer for experiment management and live monitoring.
 - [ ] Evaluate learning dynamics and compare against pure RL baselines.
 
+## Architecture Highlights
+
+- **Neurosymbolic loops** – The `HarnessCore` runs a produce‑evaluate‑act cycle where
+  procedural rules produce `NeuroAction` messages that mix symbolic commands with neural
+  intentions.
+- **Unified action representation** – All actions, whether purely symbolic or purely neural,
+  are expressed with a single `NeuroAction` message. The `NeuroCore` resolves them into
+  concrete buffer operations.  
+  See [docs/action-representation.md](docs/action-representation.md) for the full design.
+
 ## Getting Started
 
 ### Prerequisites
+
 - [Pixi](https://pixi.sh)
 - Python 3.13 (Pixi will manage it)
 
 ### Setup & Run Tests
+
 ```bash
 cd python
 pixi install
@@ -163,9 +178,11 @@ pixi run -e dev pytest
 ```
 
 ### Run a Quick Training Demo
+
 ```bash
 pixi run -e dev python main.py
 ```
+
 (You may need to create a simple `main.py` that assembles the agent and runs a few
 episodes.)
 

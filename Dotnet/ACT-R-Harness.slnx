@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/docs/">
+    <File Path="../docs/action-representation.md" />
+  </Folder>
+  <Folder Name="/ProjectItems/">
+    <File Path=".gitignore" />
+    <File Path="ACT-R-Harness.sln.DotSettings" />
+    <File Path="../README.md" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/Harness.Core/Harness.Core.csproj" />
+  </Folder>
+</Solution>
