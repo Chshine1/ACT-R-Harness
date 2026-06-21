@@ -1,0 +1,25 @@
+﻿syntax = "proto3";
+
+package actr.services;
+
+import "common.proto";
+import "google/protobuf/empty.proto";
+
+service ProceduralMemoryService {
+  rpc GetAllConditions (google.protobuf.Empty) returns (GetAllConditionsResponse);
+  rpc SelectRule (SelectRuleRequest) returns (NeuroAction);
+  rpc LearnUtility (LearnUtilityRequest) returns (google.protobuf.Empty);
+}
+
+message GetAllConditionsResponse {
+  repeated ProceduralCondition conditions = 1;
+}
+
+message SelectRuleRequest {
+  repeated string satisfied_rule_ids = 1;
+}
+
+message LearnUtilityRequest {
+  string rule_id = 1;
+  float reward = 2;
+}

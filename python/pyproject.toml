@@ -1,6 +1,5 @@
 [project]
 authors = [{name = "Chshine1", email = "chshine@qq.com"}]
-dependencies = []
 name = "python"
 requires-python = ">= 3.11"
 version = "0.1.0"
@@ -13,14 +12,22 @@ requires = ["hatchling"]
 channels = ["conda-forge"]
 platforms = ["win-64"]
 
+[tool.pixi.pypi-options]
+no-build-isolation = ["grpcio-tools"]
+
 [tool.pixi.tasks]
 typecheck = "pixi run -e dev mypy src tests && pixi run -e dev pyright src tests"
 lint = "pixi run -e dev ruff check src tests"
 check = "pixi run typecheck && pixi run lint"
+protos-gen = "pixi run -e dev python tools/generate_protos.py"
 
 [tool.pixi.dependencies]
 python = "3.13.*"
 pyyaml = ">=6.0.3,<7"
+ca-certificates = ">=2026.6.17,<2027"
+
+[tool.pixi.pypi-dependencies]
+grpclib = ">=0.4.9,<0.5"
 
 [tool.pixi.feature.dev.dependencies]
 pytest = ">=9.1.1,<10"
@@ -30,11 +37,19 @@ decoy = ">=2.6.0, <3"
 pyright = ">=1.1.410, <2"
 mypy = ">=2.1.0, <3"
 ruff = ">=0.15.18, <0.16"
+setuptools = ">=82.0.1, <83"
+pyrefly = ">=1.1.1, <2"
+betterproto = { version = "==2.0.0b7", extras = ["compiler"] }
+grpcio-tools = ">=1.81.1, <2"
 
 [tool.pixi.environments]
 dev = ["default", "dev"]
 
 [tool.pyright]
+root = "."
+include = ["src", "tests"]
+exclude = ["**/__pycache__", "**/node_modules", "src/generated"]
+
 reportGeneralTypeIssues = true
 reportPropertyTypeMismatch = true
 reportFunctionMemberAccess = true
@@ -75,6 +90,10 @@ check_untyped_defs = true
 
 plugins = ["decoy.mypy"]
 
+exclude = [
+    "^src/generated/.*",
+]
+
 [tool.ruff]
 select = [
     "E",   # pycodestyle errors
@@ -93,6 +112,10 @@ select = [
 ignore = []
 line-length = 88
 target-version = "py313"
+
+exclude = [
+    "src/generated",
+]
 
 [tool.ruff.per-file-ignores]
 "tests/**/*.py" = ["S101"]

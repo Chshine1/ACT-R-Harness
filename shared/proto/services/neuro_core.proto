@@ -1,0 +1,29 @@
+﻿syntax = "proto3";
+
+package actr.services;
+
+import "common.proto";
+
+service NeuroCoreService {
+  rpc EvaluateConditions (EvaluateConditionsRequest) returns (EvaluateConditionsResponse);
+  rpc DecodeAction (DecodeActionRequest) returns (DecodeActionResponse);
+}
+
+message EvaluateConditionsRequest {
+  repeated ProceduralCondition conditions = 1;
+  repeated BufferState buffer_states = 2;
+}
+
+message EvaluateConditionsResponse {
+  repeated string satisfied_rule_ids = 1;
+}
+
+message DecodeActionRequest {
+  NeuroAction action_intent = 1;
+  repeated BufferState current_states = 2;
+  repeated ModuleSchema schemas = 3;
+}
+
+message DecodeActionResponse {
+  repeated BufferOperation operations = 1;
+}
