@@ -3,7 +3,7 @@ using Actr;
 
 namespace Harness.Core.Modules;
 
-public class IntentionModule(int maxStackSize = 7) : IModule
+public class IntentionModule : IModule
 {
     private class Goal
     {
@@ -51,7 +51,7 @@ public class IntentionModule(int maxStackSize = 7) : IModule
     }
 
     private readonly Stack<Goal> _goalStack = new();
-    private readonly int _maxStackSize = Math.Max(1, maxStackSize);
+    private const int MaxStackSize = 7;
 
     private static double Now() => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0;
 
@@ -72,7 +72,7 @@ public class IntentionModule(int maxStackSize = 7) : IModule
             data.Fields["stack_depth"] = Value.ForNumber(0);
         }
 
-        data.Fields["max_capacity"] = Value.ForNumber(_maxStackSize);
+        data.Fields["max_capacity"] = Value.ForNumber(MaxStackSize);
 
         return new BufferState
         {
@@ -95,7 +95,7 @@ public class IntentionModule(int maxStackSize = 7) : IModule
                         "slots": { "type": "object" }
                     }
                     """,
-                ["pushSubgoal"] = 
+                ["pushSubgoal"] =
                     """
                     {
                         "id": "string",
@@ -104,7 +104,7 @@ public class IntentionModule(int maxStackSize = 7) : IModule
                     """,
                 ["popGoal"] = "{}",
                 ["clearGoals"] = "{}",
-                ["modifySlot"] = 
+                ["modifySlot"] =
                     """
                     {
                         "slot": "string",
@@ -157,7 +157,7 @@ public class IntentionModule(int maxStackSize = 7) : IModule
         var goal = Goal.FromStruct(parameters);
         goal.CreationTime = Now();
 
-        while (_goalStack.Count >= _maxStackSize)
+        while (_goalStack.Count >= MaxStackSize)
         {
             var temp = new List<Goal>(_goalStack);
             temp.RemoveAt(temp.Count - 1);

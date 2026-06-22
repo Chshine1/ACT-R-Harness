@@ -1,0 +1,21 @@
+services:
+  python-services:
+    build:
+      context: .
+      dockerfile: python/Dockerfile
+    environment:
+      - TEMPERATURE=0.5
+      - LEARNING_RATE=0.1
+    ports:
+      - "50051:50051"
+
+  harness-dotnet:
+    build:
+      context: ./dotnet
+      dockerfile: Dockerfile
+    depends_on:
+      - python-services
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+    stdin_open: true
+    tty: true

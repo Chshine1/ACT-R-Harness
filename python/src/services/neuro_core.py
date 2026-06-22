@@ -1,8 +1,10 @@
-from .generated.grpc.actr.services import DecodeActionRequest, DecodeActionResponse, EvaluateConditionsRequest, EvaluateConditionsResponse, NeuroCoreServiceBase
+from ..generated.grpc.actr.services import DecodeActionRequest, DecodeActionResponse, EvaluateConditionsRequest, \
+    EvaluateConditionsResponse, NeuroCoreBase
 
 
-class NeuroCore(NeuroCoreServiceBase):
-    async def evaluate_conditions(self, evaluate_conditions_request: EvaluateConditionsRequest) -> EvaluateConditionsResponse:
+class NeuroCore(NeuroCoreBase):
+    async def evaluate_conditions(self,
+                                  evaluate_conditions_request: EvaluateConditionsRequest) -> EvaluateConditionsResponse:
         ids: list[str] = []
         for condition in evaluate_conditions_request.conditions:
             fields = condition.semantics.fields

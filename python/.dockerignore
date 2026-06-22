@@ -1,0 +1,9 @@
+./tests
+./src/generated
+__pycache__/
+*.pyc
+.pixi/
+.venv/
+*.md
+*.log
+*.tmp

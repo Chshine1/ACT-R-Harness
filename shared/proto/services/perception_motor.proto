@@ -4,7 +4,7 @@ package actr.services;
 
 import "google/protobuf/struct.proto";
 
-service FrostpunkEnvironment {
+service FrostpunkWorld {
   rpc ObserveResources(ObserveResourcesRequest) returns (ResourceState);
   rpc ObservePopulation(ObservePopulationRequest) returns (PopulationState);
   rpc ObserveSocial(ObserveSocialRequest) returns (SocialState);

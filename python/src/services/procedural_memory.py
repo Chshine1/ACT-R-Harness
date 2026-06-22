@@ -1,12 +1,11 @@
-from dataclasses import dataclass
 import math
-
-from generated.grpc.actr import NeuroAction, ProceduralCondition
-from generated.grpc.actr.services import ProceduralMemoryServiceBase, GetAllConditionsResponse, SelectRuleRequest, \
-    LearnUtilityRequest
 
 import random
 from betterproto.lib.google.protobuf import Empty
+from dataclasses import dataclass
+from ..generated.grpc.actr import NeuroAction, ProceduralCondition
+from ..generated.grpc.actr.services import ProceduralMemoryBase, GetAllConditionsResponse, SelectRuleRequest, \
+    LearnUtilityRequest
 
 
 @dataclass
@@ -17,7 +16,7 @@ class Rule:
     utility: float
 
 
-class ProceduralMemory(ProceduralMemoryServiceBase):
+class ProceduralMemory(ProceduralMemoryBase):
     def __init__(self, temperature: float = 0.5, learning_rate: float = 0.1):
         self.rules: dict[str, Rule] = {}
         self.temperature = temperature

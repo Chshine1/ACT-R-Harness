@@ -5,7 +5,7 @@ package actr.services;
 import "common.proto";
 import "google/protobuf/empty.proto";
 
-service ProceduralMemoryService {
+service ProceduralMemory {
   rpc GetAllConditions (google.protobuf.Empty) returns (GetAllConditionsResponse);
   rpc SelectRule (SelectRuleRequest) returns (NeuroAction);
   rpc LearnUtility (LearnUtilityRequest) returns (google.protobuf.Empty);

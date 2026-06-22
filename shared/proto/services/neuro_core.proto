@@ -4,7 +4,7 @@ package actr.services;
 
 import "common.proto";
 
-service NeuroCoreService {
+service NeuroCore {
   rpc EvaluateConditions (EvaluateConditionsRequest) returns (EvaluateConditionsResponse);
   rpc DecodeAction (DecodeActionRequest) returns (DecodeActionResponse);
 }

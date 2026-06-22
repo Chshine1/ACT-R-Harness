@@ -4,7 +4,7 @@ using Actr.Services;
 
 namespace Harness.Core.Modules
 {
-    public class PerceptionMotorModule(FrostpunkEnvironment.FrostpunkEnvironmentClient client) : IModule
+    public class PerceptionMotorModule(FrostpunkWorld.FrostpunkWorldClient client) : IModule
     {
         private ResourceState? _resourceState;
         private PopulationState? _populationState;

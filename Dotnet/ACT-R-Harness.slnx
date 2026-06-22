@@ -5,9 +5,13 @@
   <Folder Name="/ProjectItems/">
     <File Path=".gitignore" />
     <File Path="ACT-R-Harness.sln.DotSettings" />
+    <File Path="../.dockerignore" />
+    <File Path="../docker-compose.yml" />
     <File Path="../README.md" />
+    <File Path="Dockerfile" />
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/Harness.Core/Harness.Core.csproj" />
+    <Project Path="src/Harness.Host/Harness.Host.csproj" />
   </Folder>
 </Solution>

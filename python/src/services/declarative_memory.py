@@ -2,9 +2,9 @@ import math
 import time
 
 import random
-from betterproto.lib.google.protobuf import Empty
-from .generated.grpc.actr import MemoryChunk
-from .generated.grpc.actr.services import DeclarativeMemoryBase, AddChunkRequest, RetrieveRequest, RetrieveResponse, \
+from betterproto.lib.std.google.protobuf import Empty
+from ..generated.grpc.actr import MemoryChunk
+from ..generated.grpc.actr.services import DeclarativeMemoryBase, AddChunkRequest, RetrieveRequest, RetrieveResponse, \
     UpdateActivationRequest
 
 
