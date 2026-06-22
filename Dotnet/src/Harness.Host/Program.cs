@@ -1,5 +1,5 @@
-﻿using Actr.Services;
-using Grpc.Net.Client;
+﻿using Grpc.Net.Client;
+using Harness.Abstractions.Actr.Services;
 using Harness.Core.Extensions;
 using Harness.Host.Options;
 using JetBrains.Annotations;

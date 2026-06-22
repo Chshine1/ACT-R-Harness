@@ -1,8 +1,10 @@
 syntax = "proto3";
 
-import "google/protobuf/struct.proto";
+option csharp_namespace = "Harness.Abstractions.Actr";
 
 package actr;
+
+import "google/protobuf/struct.proto";
 
 message BufferState {
   string module_id = 1;

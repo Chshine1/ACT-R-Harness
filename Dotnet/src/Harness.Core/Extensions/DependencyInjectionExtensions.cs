@@ -1,4 +1,5 @@
-﻿using Harness.Core.Modules;
+﻿using Harness.Abstractions;
+using Harness.Core.Modules;
 using JetBrains.Annotations;
 using Microsoft.Extensions.DependencyInjection;
 

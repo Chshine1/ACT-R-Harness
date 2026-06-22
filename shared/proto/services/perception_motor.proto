@@ -1,5 +1,7 @@
 ﻿syntax = "proto3";
 
+option csharp_namespace = "Harness.Abstractions.Actr.Services";
+
 package actr.services;
 
 import "google/protobuf/struct.proto";

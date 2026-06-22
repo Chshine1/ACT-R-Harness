@@ -1,5 +1,6 @@
 ﻿using Google.Protobuf.WellKnownTypes;
-using Actr;
+using Harness.Abstractions;
+using Harness.Abstractions.Actr;
 
 namespace Harness.Core.Modules;
 

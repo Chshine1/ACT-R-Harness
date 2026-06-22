@@ -1,0 +1,36 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <PackageReference Include="Google.Protobuf" Version="3.35.1" />
+      <PackageReference Include="Grpc.Net.Client" Version="2.80.0" />
+      <PackageReference Include="Grpc.Tools" Version="2.81.1">
+        <PrivateAssets>all</PrivateAssets>
+        <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      </PackageReference>
+    </ItemGroup>
+
+    <ItemGroup>
+        <Protobuf Include="..\..\..\shared\proto\common.proto"
+                  GrpcServices="None"
+                  ProtoRoot="..\..\..\shared\proto" />
+        <Protobuf Include="..\..\..\shared\proto\services\declarative_memory.proto"
+                  GrpcServices="Client"
+                  ProtoRoot="..\..\..\shared\proto" />
+        <Protobuf Include="..\..\..\shared\proto\services\neuro_core.proto"
+                  GrpcServices="Client"
+                  ProtoRoot="..\..\..\shared\proto" />
+        <Protobuf Include="..\..\..\shared\proto\services\perception_motor.proto"
+                  GrpcServices="Client"
+                  ProtoRoot="..\..\..\shared\proto" />
+        <Protobuf Include="..\..\..\shared\proto\services\procedural_memory.proto"
+                  GrpcServices="Client"
+                  ProtoRoot="..\..\..\shared\proto" />
+    </ItemGroup>
+
+</Project>

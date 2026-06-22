@@ -1,4 +1,6 @@
-﻿namespace Harness.Core;
+﻿using Harness.Abstractions;
+
+namespace Harness.Core;
 
 public class HarnessCore(IModuleRegistry moduleRegistry, IProceduralMemory proceduralMemory, INeuroCore neuro)
 {

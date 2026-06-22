@@ -1,7 +1,8 @@
-﻿using Actr;
-using Actr.Services;
-using Google.Protobuf.WellKnownTypes;
+﻿using Google.Protobuf.WellKnownTypes;
 using Grpc.Core;
+using Harness.Abstractions;
+using Harness.Abstractions.Actr;
+using Harness.Abstractions.Actr.Services;
 
 namespace Harness.Core.Modules;
 

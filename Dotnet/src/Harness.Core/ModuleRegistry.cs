@@ -1,10 +1,6 @@
-﻿namespace Harness.Core;
+﻿using Harness.Abstractions;
 
-public interface IModuleRegistry
-{
-    void RegisterModule(IModule module);
-    IReadOnlyList<IModule> GetModules();
-}
+namespace Harness.Core;
 
 public class ModuleRegistry : IModuleRegistry
 {

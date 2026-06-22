@@ -1,6 +1,6 @@
-﻿using Actr;
+﻿using Harness.Abstractions.Actr;
 
-namespace Harness.Core;
+namespace Harness.Abstractions;
 
 public interface IModule
 {
