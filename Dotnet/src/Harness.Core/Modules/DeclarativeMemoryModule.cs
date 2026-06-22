@@ -5,7 +5,7 @@ using Grpc.Core;
 
 namespace Harness.Core.Modules;
 
-public class DeclarativeMemory(Actr.Services.DeclarativeMemory.DeclarativeMemoryClient client)
+public class DeclarativeMemoryModule(DeclarativeMemory.DeclarativeMemoryClient client)
     : IModule
 {
     private MemoryChunk? _lastRetrieved;

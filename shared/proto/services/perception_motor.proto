@@ -1,0 +1,152 @@
+﻿syntax = "proto3";
+
+package actr.services;
+
+import "google/protobuf/struct.proto";
+
+service FrostpunkEnvironment {
+  rpc ObserveResources(ObserveResourcesRequest) returns (ResourceState);
+  rpc ObservePopulation(ObservePopulationRequest) returns (PopulationState);
+  rpc ObserveSocial(ObserveSocialRequest) returns (SocialState);
+  rpc ObserveTemperature(ObserveTemperatureRequest) returns (TemperatureState);
+  rpc ObserveLaws(ObserveLawsRequest) returns (LawsState);
+  rpc ObserveResearch(ObserveResearchRequest) returns (ResearchState);
+  rpc ObserveBuildings(ObserveBuildingsRequest) returns (BuildingsState);
+  rpc GetFullState(GetFullStateRequest) returns (FrostpunkState);
+  rpc PerformAction(PerformActionRequest) returns (PerformActionResponse);
+  rpc Reset(ResetRequest) returns (FrostpunkState);
+}
+
+message ResourceState {
+  int32 day = 1;
+  double time_of_day = 2;
+  map<string, double> resources = 3;
+}
+
+message PopulationState {
+  int32 total_population = 1;
+  int32 workers = 2;
+  int32 engineers = 3;
+  int32 children = 4;
+  int32 sick = 5;
+  int32 hungry = 6;
+}
+
+message SocialState {
+  double hope = 1;
+  double discontent = 2;
+}
+
+message TemperatureState {
+  double temperature = 1;
+  int32 heat_level = 2;
+}
+
+message LawsState {
+  repeated string enacted_laws = 1;
+}
+
+message ResearchState {
+  repeated string researched_techs = 1;
+  string current_research_id = 2;
+  double research_progress = 3;
+}
+
+message BuildingsState {
+  repeated Building buildings = 1;
+}
+
+message Building {
+  string id = 1;
+  string type = 2;
+  int32 level = 3;
+  int32 x = 4;
+  int32 y = 5;
+  int32 assigned_workers = 6;
+  bool is_active = 7;
+}
+
+message FrostpunkState {
+  int32 day = 1;
+  double time_of_day = 2;
+  map<string, double> resources = 3;
+  PopulationState population = 4;
+  SocialState social = 5;
+  TemperatureState temperature = 6;
+  LawsState laws = 7;
+  ResearchState research = 8;
+  BuildingsState buildings = 9;
+  google.protobuf.Struct extra = 10;
+}
+
+message ObserveResourcesRequest {}
+message ObservePopulationRequest {}
+message ObserveSocialRequest {}
+message ObserveTemperatureRequest {}
+message ObserveLawsRequest {}
+message ObserveResearchRequest {}
+message ObserveBuildingsRequest {}
+message GetFullStateRequest {}
+
+message PerformActionRequest {
+  FrostpunkAction action = 1;
+}
+
+message PerformActionResponse {
+  FrostpunkState new_state = 1;
+  bool done = 2;
+  double reward = 3;
+}
+
+message ResetRequest {
+  string scenario = 1;
+}
+
+message FrostpunkAction {
+  oneof action {
+    BuildAction build = 1;
+    DemolishAction demolish = 2;
+    AssignWorkersAction assign_workers = 3;
+    EnactLawAction enact_law = 4;
+    ResearchAction research = 5;
+    AdjustHeaterAction adjust_heater = 6;
+    DispatchScoutsAction dispatch_scouts = 7;
+    GenericAction generic = 8;
+  }
+}
+
+message BuildAction {
+  string building_type = 1;
+  int32 x = 2;
+  int32 y = 3;
+}
+
+message DemolishAction {
+  string building_id = 1;
+}
+
+message AssignWorkersAction {
+  string building_id = 1;
+  int32 count = 2;
+}
+
+message EnactLawAction {
+  string law_id = 1;
+}
+
+message ResearchAction {
+  string tech_id = 1;
+}
+
+message AdjustHeaterAction {
+  int32 new_level = 1;
+}
+
+message DispatchScoutsAction {
+  string destination_id = 1;
+}
+
+message GenericAction {
+  string name = 1;
+  google.protobuf.Struct params = 2;
+}
