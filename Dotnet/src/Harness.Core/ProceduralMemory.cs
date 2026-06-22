@@ -1,22 +1,38 @@
-﻿using Harness.Abstractions;
+﻿using Google.Protobuf.WellKnownTypes;
+using Harness.Abstractions;
 using Harness.Abstractions.Actr;
+using Harness.Abstractions.Actr.Services;
 
 namespace Harness.Core;
 
-public class ProceduralMemory : IProceduralMemory
+public class ProceduralMemory(Abstractions.Actr.Services.ProceduralMemory.ProceduralMemoryClient client)
+    : IProceduralMemory
 {
     public IReadOnlyList<ProceduralCondition> GetAllConditions()
     {
-        throw new NotImplementedException();
+        var response = client.GetAllConditions(new Empty());
+        return response.Conditions;
     }
 
     public NeuroAction SelectRule(IReadOnlyList<string> satisfiedRuleIds)
     {
-        throw new NotImplementedException();
+        var response = client.SelectRule(
+            new SelectRuleRequest
+            {
+                SatisfiedRuleIds = { satisfiedRuleIds }
+            }
+        );
+        return response;
     }
 
-    public Task LearnUtilityAsync(string ruleId, float reward, CancellationToken cancellation = default)
+    public async Task LearnUtilityAsync(string ruleId, float reward, CancellationToken cancellationToken = default)
     {
-        throw new NotImplementedException();
+        await client.LearnUtilityAsync(
+            new LearnUtilityRequest
+            {
+                RuleId = ruleId,
+                Reward = reward
+            }, cancellationToken: cancellationToken
+        );
     }
 }
