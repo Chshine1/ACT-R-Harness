@@ -1,12 +1,14 @@
 ﻿namespace Harness.Core;
 
-public class HarnessCore(List<IModule> modules, IProceduralMemory proceduralMemory, INeuroCore neuro)
+public class HarnessCore(IModuleRegistry moduleRegistry, IProceduralMemory proceduralMemory, INeuroCore neuro)
 {
     private string? _lastRuleId;
 
     public async Task StepAsync(float? reward)
     {
         if (reward.HasValue && _lastRuleId != null) await proceduralMemory.LearnUtilityAsync(_lastRuleId, reward.Value);
+
+        var modules = moduleRegistry.GetModules();
 
         var bufferStates = modules.Select(m => m.GetBufferState()).ToList();
         var schemas = modules.Select(m => m.GetOperationSchema()).ToList();

@@ -1,0 +1,29 @@
+﻿syntax = "proto3";
+
+package actr.services;
+
+import "common.proto";
+import "google/protobuf/empty.proto";
+
+service DeclarativeMemory {
+  rpc AddChunk(AddChunkRequest) returns (google.protobuf.Empty);
+  rpc Retrieve(RetrieveRequest) returns (RetrieveResponse);
+  rpc UpdateActivation(UpdateActivationRequest) returns (google.protobuf.Empty);
+}
+
+message AddChunkRequest {
+  MemoryChunk chunk = 1;
+}
+
+message RetrieveRequest {
+  map<string, string> cue = 1;
+}
+
+message RetrieveResponse {
+  optional MemoryChunk chunk = 1;
+}
+
+message UpdateActivationRequest {
+  string chunk_id = 1;
+  double delta = 2;
+}

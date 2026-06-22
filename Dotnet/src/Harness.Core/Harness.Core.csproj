@@ -19,6 +19,9 @@
         <Protobuf Include="..\..\..\shared\proto\common.proto"
                   GrpcServices="None"
                   ProtoRoot="..\..\..\shared\proto" />
+        <Protobuf Include="..\..\..\shared\proto\services\declarative_memory.proto"
+                  GrpcServices="Client"
+                  ProtoRoot="..\..\..\shared\proto" />
         <Protobuf Include="..\..\..\shared\proto\services\neuro_core.proto"
                   GrpcServices="Client"
                   ProtoRoot="..\..\..\shared\proto" />

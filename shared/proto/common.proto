@@ -48,3 +48,9 @@ message NeuroAction {
   map<string, google.protobuf.Struct> commands = 2;   // explicit symbolic commands
   map<string, google.protobuf.Struct> semantics = 3;  // neural/semantic payloads
 }
+
+message MemoryChunk {
+  string id = 1;
+  double creation_time = 2;
+  map<string, string> slots = 3;
+}
