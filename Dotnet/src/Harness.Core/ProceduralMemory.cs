@@ -7,8 +7,8 @@ namespace Harness.Core;
 
 public class ProceduralMemory : IProceduralMemory
 {
-    private string? _lastRuleId;
     private readonly Abstractions.Actr.Services.ProceduralMemory.ProceduralMemoryClient _client;
+    private string? _lastRuleId;
 
     public ProceduralMemory(Abstractions.Actr.Services.ProceduralMemory.ProceduralMemoryClient client, IClock clock)
     {

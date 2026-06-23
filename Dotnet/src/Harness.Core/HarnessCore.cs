@@ -5,7 +5,7 @@ namespace Harness.Core;
 public class HarnessCore(IModuleRegistry moduleRegistry, IProceduralMemory proceduralMemory, INeuroCore neuro)
 {
     private readonly IReadOnlyCollection<IModule> _modules = moduleRegistry.GetModules();
-    
+
     public async Task<bool> StepAsync()
     {
         var bufferStates = _modules.Select(m => m.GetBufferState()).ToList();
@@ -22,7 +22,7 @@ public class HarnessCore(IModuleRegistry moduleRegistry, IProceduralMemory proce
             var module = _modules.First(m => m.ModuleId == operation.TargetModuleId);
             module.OperateBuffer(operation);
         }
-        
+
         return true;
     }
 }

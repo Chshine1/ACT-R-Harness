@@ -6,17 +6,18 @@ using Microsoft.Extensions.Options;
 
 namespace Harness.Host;
 
-public class HarnessRunner(HarnessCore core, IClock clock, IRewardService rewardService, IOptions<HarnessOptions> options)
+public class HarnessRunner(
+    HarnessCore core,
+    IClock clock,
+    IRewardService rewardService,
+    IOptions<HarnessOptions> options)
     : BackgroundService
 {
     private readonly HarnessOptions _options = options.Value;
-    
+
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
-        for (var epoch = 0; epoch < _options.MaxEpochs; epoch++)
-        {
-            await RunEpochAsync(epoch, ct);
-        }
+        for (var epoch = 0; epoch < _options.MaxEpochs; epoch++) await RunEpochAsync(epoch, ct);
     }
 
     private async Task RunEpochAsync(int _, CancellationToken cancellationToken)

@@ -28,26 +28,31 @@ public record RoomState
     public double AirQuality { get; set; } // 0-100, higher is better
     public bool IsOccupied { get; set; }
     public List<DeviceState> Devices { get; } = [];
-    public static double AirMassEstimate() => 50.0;
+
+    public static double AirMassEstimate()
+    {
+        return 50.0;
+    }
 }
 
 public class SimulatedHome
 {
-    private readonly List<RoomState> _rooms = [];
-    private readonly Random _rng;
-    private double _totalEnergyConsumed; // kWh
-    private double _outdoorTemp = 20.0;
-    private double _outdoorHumidity = 50.0;
-
-    private double NextEventTime { get; set; } = double.PositiveInfinity;
-
     public const double TimeStepHours = 1.0 / 60; // 1 minute per step by default
+
+    private readonly List<Action> _pendingActions = [];
+    private readonly Random _rng;
+    private readonly List<RoomState> _rooms = [];
+    private double _outdoorHumidity = 50.0;
+    private double _outdoorTemp = 20.0;
+    private double _totalEnergyConsumed; // kWh
 
     public SimulatedHome(int seed = 42)
     {
         _rng = new Random(seed);
         InitializeRoomsAndDevices();
     }
+
+    private double NextEventTime { get; set; } = double.PositiveInfinity;
 
     private void InitializeRoomsAndDevices()
     {
@@ -87,8 +92,6 @@ public class SimulatedHome
         ScheduleNextEvent();
     }
 
-    private readonly List<Action> _pendingActions = [];
-
     public void ApplyAction(string command, Dictionary<string, object> parameters)
     {
         _pendingActions.Add(() => ExecuteCommand(command, parameters));
@@ -102,40 +105,40 @@ public class SimulatedHome
                 break;
             case "SendMotorCommand":
                 var cmd = parameters["command"] as string;
-                var prms = parameters["parameters"] as double[];
-                HandleMotorCommand(cmd, prms);
+                var ps = parameters["parameters"] as double[];
+                HandleMotorCommand(cmd, ps);
                 break;
         }
     }
 
-    private void HandleMotorCommand(string? command, double[]? prms)
+    private void HandleMotorCommand(string? command, double[]? ps)
     {
         if (command == null) return;
         switch (command.ToLower())
         {
             case "set_light":
-                if (prms?.Length >= 2)
+                if (ps?.Length >= 2)
                 {
-                    var roomId = GetRoomIdFromIndex((int)prms[0]);
-                    var on = prms[1] > 0.5;
+                    var roomId = GetRoomIdFromIndex((int)ps[0]);
+                    var on = ps[1] > 0.5;
                     SetDeviceState(roomId, DeviceType.Light, on);
                 }
 
                 break;
             case "set_hvac":
-                if (prms?.Length >= 2)
+                if (ps?.Length >= 2)
                 {
-                    var roomId = GetRoomIdFromIndex((int)prms[0]);
-                    var targetTemp = prms[1];
+                    var roomId = GetRoomIdFromIndex((int)ps[0]);
+                    var targetTemp = ps[1];
                     SetHvacTarget(roomId, targetTemp);
                 }
 
                 break;
             case "set_appliance":
-                if (prms?.Length >= 2)
+                if (ps?.Length >= 2)
                 {
-                    var roomId = GetRoomIdFromIndex((int)prms[0]);
-                    var on = prms[1] > 0.5;
+                    var roomId = GetRoomIdFromIndex((int)ps[0]);
+                    var on = ps[1] > 0.5;
                     SetDeviceState(roomId, DeviceType.Appliance, on);
                 }
 
@@ -143,7 +146,10 @@ public class SimulatedHome
         }
     }
 
-    private string GetRoomIdFromIndex(int index) => _rooms[Math.Clamp(index, 0, _rooms.Count - 1)].Id;
+    private string GetRoomIdFromIndex(int index)
+    {
+        return _rooms[Math.Clamp(index, 0, _rooms.Count - 1)].Id;
+    }
 
     private void SetDeviceState(string roomId, DeviceType type, bool on)
     {
@@ -171,21 +177,17 @@ public class SimulatedHome
 
         foreach (var room in _rooms)
         {
-            var heatTransfer = (2.0 / 60.0) * deltaHours * (_outdoorTemp - room.Temperature);
+            var heatTransfer = 2.0 / 60.0 * deltaHours * (_outdoorTemp - room.Temperature);
             double hvacEffect = 0;
             foreach (var device in room.Devices.Where(d => d is { Type: DeviceType.HVAC, IsOn: true }))
             {
                 var diff = device.TargetTemperature - room.Temperature;
                 if (diff > 0)
-                {
-                    hvacEffect += Math.Min(device.HeatingPower * deltaHours / (RoomState.AirMassEstimate()),
+                    hvacEffect += Math.Min(device.HeatingPower * deltaHours / RoomState.AirMassEstimate(),
                         diff * 0.3);
-                }
                 else
-                {
-                    hvacEffect += Math.Max(-device.CoolingPower * deltaHours / (RoomState.AirMassEstimate()),
+                    hvacEffect += Math.Max(-device.CoolingPower * deltaHours / RoomState.AirMassEstimate(),
                         diff * 0.3);
-                }
             }
 
             double internalHeat = 0;
@@ -250,7 +252,7 @@ public class SimulatedHome
             {
                 Temperature = r.Temperature,
                 Humidity = r.Humidity,
-                AirQuality = r.AirQuality,
+                AirQuality = r.AirQuality
             }).ToList(),
             TotalEnergy = _totalEnergyConsumed
         };

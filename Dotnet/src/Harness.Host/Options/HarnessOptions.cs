@@ -6,7 +6,7 @@ namespace Harness.Host.Options;
 public class HarnessOptions
 {
     public const string Section = "Harness";
-    
+
     public required bool Training { get; init; }
     public required int MaxEpochs { get; init; }
     public required int MaxStepsPerEpoch { get; init; }

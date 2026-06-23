@@ -6,12 +6,12 @@ using Harness.Abstractions.Actr.Services;
 
 namespace Harness.Core.Modules;
 
-public class DeclarativeMemoryModule : IModule
+public partial class DeclarativeMemoryModule
 {
+    private const double DefaultDeltaTimeSeconds = 60.0;
     private readonly DeclarativeMemory.DeclarativeMemoryClient _client;
     private readonly IModuleRegistry _moduleRegistry;
     private MemoryChunk? _lastRetrieved;
-    private const double DefaultDeltaTimeSeconds = 60.0;
 
     public DeclarativeMemoryModule(
         DeclarativeMemory.DeclarativeMemoryClient client,
@@ -23,8 +23,6 @@ public class DeclarativeMemoryModule : IModule
         ArgumentNullException.ThrowIfNull(clock);
         clock.OnTickAsync += OnTickAsync;
     }
-
-    public string ModuleId => "DeclarativeMemory";
 
     public void OperateBuffer(BufferOperation op)
     {
@@ -58,9 +56,7 @@ public class DeclarativeMemoryModule : IModule
             CreationTime = parameters.Fields["creation_time"].NumberValue
         };
         foreach (var slot in parameters.Fields["slots"].StructValue.Fields)
-        {
             chunk.Slots.Add(slot.Key, slot.Value.StringValue);
-        }
 
         _client.AddChunk(new AddChunkRequest { Chunk = chunk });
     }
@@ -68,75 +64,10 @@ public class DeclarativeMemoryModule : IModule
     private void Retrieve(Struct parameters)
     {
         var request = new RetrieveRequest();
-        foreach (var field in parameters.Fields)
-        {
-            request.Cue.Add(field.Key, field.Value.StringValue);
-        }
+        foreach (var field in parameters.Fields) request.Cue.Add(field.Key, field.Value.StringValue);
 
         var response = _client.Retrieve(request);
         _lastRetrieved = response.Chunk;
-    }
-
-    public BufferState GetBufferState()
-    {
-        var data = new Struct();
-        if (_lastRetrieved != null)
-        {
-            var chunkStruct = new Struct
-            {
-                Fields =
-                {
-                    ["id"] = Value.ForString(_lastRetrieved.Id),
-                    ["creation_time"] = Value.ForNumber(_lastRetrieved.CreationTime),
-                    ["slots"] = Value.ForStruct(new Struct())
-                }
-            };
-            var slotsStruct = new Struct();
-            foreach (var slot in _lastRetrieved.Slots)
-                slotsStruct.Fields[slot.Key] = Value.ForString(slot.Value);
-            chunkStruct.Fields["slots"] = Value.ForStruct(slotsStruct);
-
-            data.Fields["retrieved_chunk"] = Value.ForStruct(chunkStruct);
-        }
-        else
-        {
-            data.Fields["retrieved_chunk"] = Value.ForNull();
-        }
-
-        return new BufferState
-        {
-            ModuleId = ModuleId,
-            Data = data
-        };
-    }
-
-    public ModuleSchema GetOperationSchema()
-    {
-        var schema = new ModuleSchema { ModuleId = ModuleId };
-        schema.CommandSchemas.Add(
-            "AddChunk",
-            """
-            {
-                "type": "object",
-                "properties": {
-                    "id": { "type": "string" },
-                    "creation_time": { "type": "number" },
-                    "slots": { "type": "object", "additionalProperties": { "type": "string" } }
-                },
-                "required": ["id", "creation_time", "slots"]
-            }
-            """
-        );
-        schema.CommandSchemas.Add(
-            "Retrieve",
-            """
-            {
-                "type": "object",
-                "additionalProperties": { "type": "string" }
-            }
-            """
-        );
-        return schema;
     }
 
     private async Task OnTickAsync(StepState stepState, CancellationToken cancellationToken)

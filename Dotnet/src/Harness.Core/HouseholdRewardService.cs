@@ -30,10 +30,8 @@ public class HouseholdRewardService(PerceptionMotorModule perceptionModule) : IR
         reward -= state.TotalEnergy * 2.0;
 
         foreach (var room in state.Rooms)
-        {
             if (room.Temperature is > 35 or < 10)
                 reward -= 100;
-        }
 
         return (float)reward;
     }

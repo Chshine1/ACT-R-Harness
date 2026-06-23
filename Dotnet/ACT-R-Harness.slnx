@@ -1,18 +1,18 @@
 <Solution>
-  <Folder Name="/docs/">
-    <File Path="../docs/action-representation.md" />
-  </Folder>
-  <Folder Name="/ProjectItems/">
-    <File Path=".gitignore" />
-    <File Path="ACT-R-Harness.sln.DotSettings" />
-    <File Path="../.dockerignore" />
-    <File Path="../docker-compose.yml" />
-    <File Path="../README.md" />
-    <File Path="Dockerfile" />
-  </Folder>
-  <Folder Name="/src/">
-    <Project Path="src/Harness.Abstractions/Harness.Abstractions.csproj" />
-    <Project Path="src/Harness.Core/Harness.Core.csproj" />
-    <Project Path="src/Harness.Host/Harness.Host.csproj" />
-  </Folder>
+    <Folder Name="/docs/">
+        <File Path="../docs/action-representation.md"/>
+    </Folder>
+    <Folder Name="/ProjectItems/">
+        <File Path=".gitignore"/>
+        <File Path="ACT-R-Harness.sln.DotSettings"/>
+        <File Path="../.dockerignore"/>
+        <File Path="../docker-compose.yml"/>
+        <File Path="../README.md"/>
+        <File Path="Dockerfile"/>
+    </Folder>
+    <Folder Name="/src/">
+        <Project Path="src/Harness.Abstractions/Harness.Abstractions.csproj"/>
+        <Project Path="src/Harness.Core/Harness.Core.csproj"/>
+        <Project Path="src/Harness.Host/Harness.Host.csproj"/>
+    </Folder>
 </Solution>

@@ -1,11 +1,11 @@
-﻿using System.Text.Json;
-using Google.Protobuf.WellKnownTypes;
+﻿using Google.Protobuf.WellKnownTypes;
 using Harness.Abstractions;
 using Harness.Abstractions.Actr;
 using Type = System.Type;
 
 namespace Harness.Core.Modules;
-public class PerceptionMotorModule : IModule, IRewardStateProvider
+
+public partial class PerceptionMotorModule
 {
     private readonly IClock _clock;
     private readonly SimulatedHome _home;
@@ -18,66 +18,6 @@ public class PerceptionMotorModule : IModule, IRewardStateProvider
         _clock.OnTickAsync += OnTickAsync;
     }
 
-    public string ModuleId => "PerceptionMotor";
-
-    public BufferState GetBufferState()
-    {
-        return new BufferState
-        {
-            ModuleId = ModuleId,
-            Data = Struct.Parser.ParseJson(JsonSerializer.Serialize(_home.GetCurrentState()))
-        };
-    }
-
-    public ModuleSchema GetOperationSchema()
-    {
-        var schema = new ModuleSchema { ModuleId = ModuleId };
-
-        schema.CommandSchemas.Add(
-            "SetLight",
-            """
-            {
-                "type": "object",
-                "properties": {
-                    "roomIndex": { "type": "integer" },
-                    "on": { "type": "boolean" }
-                },
-                "required": ["roomIndex", "on"]
-            }
-            """
-        );
-
-        schema.CommandSchemas.Add(
-            "SetHVAC",
-            """
-            {
-                "type": "object",
-                "properties": {
-                    "roomIndex": { "type": "integer" },
-                    "targetTemp": { "type": "number" }
-                },
-                "required": ["roomIndex", "targetTemp"]
-            }
-            """
-        );
-
-        schema.CommandSchemas.Add(
-            "SetAppliance",
-            """
-            {
-                "type": "object",
-                "properties": {
-                    "roomIndex": { "type": "integer" },
-                    "on": { "type": "boolean" }
-                },
-                "required": ["roomIndex", "on"]
-            }
-            """
-        );
-
-        return schema;
-    }
-
     public void OperateBuffer(BufferOperation operation)
     {
         _pendingOperations.Add(operation);
@@ -87,7 +27,9 @@ public class PerceptionMotorModule : IModule, IRewardStateProvider
     public Type StateType => typeof(PerceptionRewardState);
 
     public Task<object> GetRewardStateAsync(CancellationToken cancellationToken = default)
-        => Task.FromResult<object>(_home.GetCurrentState());
+    {
+        return Task.FromResult<object>(_home.GetCurrentState());
+    }
 
     private Task OnTickAsync(StepState stepState, CancellationToken cancellationToken)
     {
@@ -96,6 +38,7 @@ public class PerceptionMotorModule : IModule, IRewardStateProvider
             var parameters = StructToDictionary(op.Params);
             _home.ApplyAction(op.Command, parameters);
         }
+
         _pendingOperations.Clear();
 
         _home.Update(SimulatedHome.TimeStepHours);
@@ -109,9 +52,8 @@ public class PerceptionMotorModule : IModule, IRewardStateProvider
         if (structValue == null) return dict;
 
         foreach (var field in structValue.Fields)
-        {
             dict[field.Key] = ConvertValue(field.Value) ?? throw new ArgumentNullException(nameof(structValue));
-        }
+
         return dict;
     }
 
