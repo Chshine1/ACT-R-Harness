@@ -22,7 +22,7 @@ service FrostpunkWorld {
 message ResourceState {
   int32 day = 1;
   double time_of_day = 2;
-  map<string, double> resources = 3;
+  map<string, int32> resources = 3;
 }
 
 message PopulationState {

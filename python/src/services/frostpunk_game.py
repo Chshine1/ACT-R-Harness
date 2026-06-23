@@ -358,7 +358,7 @@ class FrostpunkGame(FrostpunkWorldBase):
         return ResourceState(
             day=self.day,
             time_of_day=self.time_of_day,
-            resources={k: float(v) for k, v in self.resources.items()}
+            resources={k: v for k, v in self.resources.items()}
         )
 
     async def observe_population(self, observe_population_request: ObservePopulationRequest) -> PopulationState:

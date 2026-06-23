@@ -39,7 +39,7 @@ message ProceduralCondition {
 //
 // Design (see docs/action-representation.md for full explanation):
 // - It intentionally avoids `oneof` to allow actions that mix symbolic commands with neural intentions.
-// - `commands` can contain concrete instructions or natural‑language parameter values.
+// - `commands` can contain concrete instructions.
 // - `semantics` use a key‑prefix convention to indicate how the NeuroCore should process them:
 //      * "command:"   – merge directly into commands
 //      * "neuro:"     – generate new commands via a neural decoder
@@ -47,7 +47,7 @@ message ProceduralCondition {
 // - After NeuroCore processing, the result is a list of fully concrete BufferOperations.
 message NeuroAction {
   string rule_id = 1;
-  map<string, google.protobuf.Struct> commands = 2;   // explicit symbolic commands
+  map<string, BufferOperation> commands = 2;   // explicit symbolic commands
   map<string, google.protobuf.Struct> semantics = 3;  // neural/semantic payloads
 }
 

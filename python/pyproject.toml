@@ -30,6 +30,7 @@ ca-certificates = ">=2026.6.17,<2027"
 [tool.pixi.pypi-dependencies]
 grpclib = ">=0.4.9,<0.5"
 betterproto = "==2.0.0b7"
+httpx = ">=0.28.1,<0.29"
 
 [tool.pixi.feature.dev.dependencies]
 pytest = ">=9.1.1,<10"

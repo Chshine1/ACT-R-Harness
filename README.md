@@ -1,165 +1,182 @@
-# ACT‑R Harnessed Agent for Frostpunk
+# ACT-R Harness: A Neuro-Symbolic Agent Middleware
 
-An experimental cognitive architecture that combines **ACT‑R symbolic reasoning**,
-a **frozen neural semantic core**, and **reinforcement learning** over production‑rule
-utilities and declarative‑memory activations – designed to play (a simplified version of)
-*Frostpunk*.
+## 1. System Description
 
-## Overview
+The ACT‑R Harness is a hybrid agent framework that couples a procedural rule engine with modular, stateful buffers and
+an LLM‑powered semantic adapter. It treats the LLM not as the sole decision-maker, but as a translator between
+ambiguous, high‑level concepts and the structured symbolic operations that the agent can safely execute.
 
-Modern game‑playing agents often rely on end‑to‑end deep RL with massive black‑box
-networks. This project explores a different path: a hybrid architecture where a
-classical cognitive model (ACT‑R) is “harnessed” by a frozen large language model
-that provides semantic grounding, and where learning happens entirely inside the
-symbolic layer.
+### 1.1 Core Components
 
-We ask:
+**Procedural Core (NeuroCore)**  
+A gRPC service that evaluates production rules against current buffer states and decodes action intents into sequences
+of buffer operations. It exports two main endpoints:
 
-> Can an agent learn **what to think about** and **which high‑level strategy to pick**
-> without ever back‑propagating into the neural core?
+- `EvaluateConditions`: Given buffer snapshots and a set of procedural conditions (each with a rule ID, a symbolic
+  condition tree, and an optional semantic hint), returns the set of rule IDs whose conditions are currently satisfied.
+  Symbolic matching handles `and`, `or`, `not`, `exist`, and equality constraints. If a condition cannot be satisfied
+  symbolically but carries a semantic hint, it is deferred to the LLM for fuzzy evaluation.
+- `DecodeAction`: Given an action intent (concrete commands plus semantic supplements), current buffer states, and
+  module command schemas, generates the final list of `BufferOperation` objects. Concrete commands are passed through
+  unchanged; semantic hints of the form `command:<name>` or `neuro:<intent>` are sent to the LLM, which outputs
+  additional structured operations that respect the allowed modules and parameter types.
 
-The hypothesis is that this design yields more sample‑efficient, interpretable, and
-transferable behaviour – especially in complex resource‑management domains like
-*Frostpunk*.
+**Modular Buffers**  
+Typed, structured memory slots that represent cognitive modules:
 
-## Architecture
+- `perception&motor`: Current environmental snapshot (e.g., sensor readings) and motor entrypoint.
+- `declarative memory`: The currently retrieved chunk from declarative memory (or empty).
+- `goal&intention`: The active goal state (task, urgency, strategy, etc.).
+- Additional buffers (e.g., `visual_array`, `motor`) can be added as needed.
 
-The agent is built around three ACT‑R modules that communicate through buffers:
+**Declarative Memory (Module)**  
+A content‑addressable store of chunks (facts). Each chunk carries activation computed from:
 
-| Module                 | Role                                                                                                          |
-|------------------------|---------------------------------------------------------------------------------------------------------------|
-| **Goal buffer**        | Holds the current intention (e.g., *survive*, *find most urgent problem*).                                    |
-| **Declarative memory** | Stores and retrieves chunks (facts about resources, past events).                                             |
-| **Perception & Motor** | Encapsulates interaction with the environment – queries specific information and executes high‑level actions. |
+- Base‑level activation: $B_i = \log(\sum_j t_j^{-d})$, where $t_j$ is the time since the $j$-th reference.
+- Spreading activation from buffers (e.g., current goal or perception slots boost related chunks).
 
-A **procedural system** matches production rules against the buffer state. Rules are
-abstract and close to human reasoning, e.g.:
+**Semantic Adapter (LLM interface)**  
+The LLM is invoked only for two purposes:
 
-> IF *multiple resource crises are present*  
-> THEN *identify the most urgent one and address it*.
+- **Condition evaluation**: Given a batch of unsatisfied symbolic conditions that have semantic hints, decide which are
+  actually true based on the full buffer contents and declarative memory context.
+- **Action decoding**: Translate partial command parameters and high‑level intents (e.g., “prevent an accelerating
+  drop”) into concrete buffer operations that obey module schemas.
 
-A **frozen Neuro Core** (a local LLM) translates these abstract descriptions into
-concrete buffer operations and environment actions. It also *may* propose new rules
-when the agent repeatedly fails – but rule generation is deliberately constrained to
-avoid runaway complexity.
+LLM calls are cached by hashing the prompt, eliminating duplicate work.
 
-Crucially, **reinforcement learning is applied only to the symbolic layer**:
+### 1.2 Information Flow
 
-- **Utility learning** for production rules (which rule to select given the context).
-- **Base‑level activation learning** for declarative chunks (which memory to retrieve).
+1. At each decision cycle, buffers are updated with the latest perception and any prior memory retrievals.
+2. The procedural core evaluates all production rules. Symbolic matches are fast and deterministic; fuzzy matches are
+   batched and resolved via LLM.
+3. A conflict set of satisfied rules is produced. An external decision mechanism (e.g., utility‑based selection) picks
+   one rule to fire.
+4. The selected rule’s action intent is decoded: concrete commands are executed directly; semantic supplements are
+   expanded by the LLM into additional operations.
+5. Buffer operations are performed, potentially modifying the goal, storing new declarative chunks, or sending commands
+   to actuators.
+6. Rule utilities are updated based on the reward accumulated after firing.
 
-There is no gradient‑based training of the neural core; it remains a stable, frozen
-semantic engine.
+---
 
-### Why ACT‑R + LLM + RL?
+## 2. Claims and Expected Advantages
 
-- ACT‑R provides a cognitively plausible, transparent decision loop.
-- The LLM bridges the gap between high‑level natural‑language strategies and the
-  low‑level API of the environment.
-- RL on symbolic parameters keeps the agent adaptive while preserving interpretability.
+From an AI engineering standpoint, the Harness addresses five key limitations of pure LLM‑based agents.
 
-## Repository Structure
+### 2.1 Long‑Context Memory via Activation‑Based Forgetting
 
-```
-.
-├── README.md
-├── dotnet/                     # Future .NET orchestration & UI layer
-├── python/                     # Cognitive engine, RL training, environment adapters
-│   ├── pyproject.toml
-│   ├── pixi.lock
-│   ├── .gitattributes
-│   ├── .gitignore
-│   ├── src/
-│   │   ├── interfaces.py       # Abstract base classes for all modules
-│   │   ├── models.py           # Core data structures (Chunk, BufferSet, Rule, Op)
-│   │   ├── procedural.py       # Production system with utility learning
-│   │   ├── declarative.py      # Declarative memory with activation
-│   │   ├── neuro_core_mock.py  # Mock semantic core for testing
-│   │   ├── agent.py            # Main cognitive loop
-│   │   └── env/
-│   │       ├── abstract.py     # Abstract environment interface
-│   │       ├── frostpunk_sim.py
-│   │       └── perception.py   # Perception‑motor wrapper around environments
-│   └── tests/
-│       ├── test_procedural.py
-│       ├── test_agent.py
-│       └── test_perception.py
-└── docs/                       # Additional documentation (future)
-```
+Instead of feeding the entire history into a growing prompt window, facts are stored as declarative chunks. Activation
+dynamics automatically surface only the most relevant items into the buffer. The LLM sees a small, fixed‑size set of
+highly pertinent facts, avoiding quadratic token growth and the lost‑in‑middle problem.
 
-Currently, all prototype work happens in `python/`. The `dotnet/` directory is
-reserved for a future orchestration layer that will handle application runtime,
-configuration management, and monitoring – tasks where .NET’s tooling and
-performance are advantageous.
+**Expected gain**: Consistent recall over hundreds of steps while keeping per‑step LLM token consumption low and
+bounded.
 
-## Technology Stack (Python side)
+### 2.2 Full Decision Traceability
 
-### Environment & Package Management
+Every decision is accompanied by:
 
-- **Pixi** – fast, reproducible environment management built on conda‑forge.
-- **Python 3.13** – the minimum supported version is 3.11, but we develop on 3.13.
-- Dependencies: `pyyaml` for configuration; `pytest` + `decoy` for testing.
+- Which rule fired and why (symbolic match or semantic hint accepted).
+- The exact buffer states before and after the rule.
+- The LLM’s translation output when semantic hints were used.
 
-### Code Quality
+This white‑box trace enables debugging, auditing, and safety verification that natural‑language chain‑of‑thought alone
+cannot provide.
 
-The project enforces strict typing and linting from day one:
+### 2.3 Safe Guardrails with Soft Flexibility
 
-| Tool        | Role                                                                                         |
-|-------------|----------------------------------------------------------------------------------------------|
-| **mypy**    | Full strict‑mode type checking (`disallow_any_*`, `warn_unused_*`).                          |
-| **pyright** | Additional type checking with even more paranoid rules (`reportUnused*`, `reportOptional*`). |
-| **ruff**    | Fast Python linter replacing Flake8, isort, pyupgrade, and many plugins.                     |
-| **decoy**   | Mypy plugin that provides type‑safe, ergonomic mocks for tests.                              |
+Safety‑critical rules (e.g., “if level < 15, set pump to 100%”) can be expressed purely symbolically and executed
+**without any LLM involvement**, eliminating hallucination risk. Non‑critical, flexible behaviors (e.g., “if the
+situation resembles a past near‑failure”) are routed through the semantic layer, where the LLM operates within a
+constrained action space (allowed modules, command schemas) and cannot emit arbitrary text.
 
-All checks are available as Pixi tasks:
+**Expected gain**: Robustness against LLM errors while retaining the ability to interpret vague or novel conditions.
 
-- `pixi run typecheck` – runs both mypy and pyright.
-- `pixi run lint` – runs ruff.
-- `pixi run check` – runs both.
+### 2.4 Structured Multi‑Agent Coordination
 
-## Design Principles
+Because buffers are typed and shared, multiple agents can coordinate through:
 
-1. **Abstraction First**  
-   Every module is defined by an abstract interface (`ABC`). Concrete
-   implementations can be swapped without touching the agent core. For example,
-   `MockNeuroCore` can be replaced by a real local LLM, and `MiniFrostPunk` can
-   be replaced by a full game connector.
+- A shared declarative memory (blackboard) where facts propagate via spreading activation.
+- Goal buffer alignment through explicit rule actions.
+- Semantic negotiation: an LLM translates high‑level coordination messages into concrete buffer modifications.
 
-2. **Dependency Injection**  
-   The agent receives its modules at construction time. This makes testing
-   trivial (inject mocks) and supports configuration‑driven assembly.
+This avoids the ambiguity and information loss of multi‑turn natural‑language conversations.
 
-3. **Configuration over Code**  
-   Behavioural parameters (learning rate, temperature, model path) live in YAML
-   files, not hard‑coded.
+### 2.5 Sample‑Efficient Utility Learning
 
-4. **Testable from the Ground Up**  
-   Every cognitive module has dedicated unit tests that can run without a real
-   environment or LLM, enabling rapid iteration.
+The agent learns only to select among a small set of production rules, not from a low‑level action space. Rules embed
+substantial prior knowledge. Utility values (estimated reward minus cost) are updated by simple temporal‑difference
+methods, converging in orders of magnitude fewer interactions than end‑to‑end RL.
 
-## Current State & Next Steps
+**Expected gain**: Rapid adaptation to new tasks by adding/removing rules, with learning curves that are stable and
+explainable.
 
-- [x] Core abstractions (`interfaces.py`, `models.py`).
-- [x] Production system with utility‑based stochastic selection and online TD‑style learning.
-- [x] Declarative memory with base‑level activation and retrieval.
-- [x] Mock neuro core for end‑to‑end testing.
-- [x] Minimal Frostpunk simulator and perception wrapper.
-- [x] Full test suite with mocks (`decoy` + `unittest.mock`).
-- [ ] Replace mock neuro core with a real frozen LLM (e.g., Llama 3 via `llama.cpp`).
-- [ ] Implement rule proposal / generation logic.
-- [ ] Scale up the Frostpunk simulator or integrate a real game interface.
-- [ ] Add .NET orchestration layer for experiment management and live monitoring.
-- [ ] Evaluate learning dynamics and compare against pure RL baselines.
+---
 
-## Architecture Highlights
+## 3. Experimental Plan
 
-- **Neurosymbolic loops** – The `HarnessCore` runs a produce‑evaluate‑act cycle where
-  procedural rules produce `NeuroAction` messages that mix symbolic commands with neural
-  intentions.
-- **Unified action representation** – All actions, whether purely symbolic or purely neural,
-  are expressed with a single `NeuroAction` message. The `NeuroCore` resolves them into
-  concrete buffer operations.  
-  See [docs/action-representation.md](docs/action-representation.md) for the full design.
+To demonstrate the architectural advantages quantitatively, we propose a long‑horizon interactive task that stresses
+memory, ambiguous instruction interpretation, and sample efficiency.
+
+### 3.1 Task: Long‑Term Household Manager
+
+**Environment**  
+A simulated home with continuous time‑varying variables: temperature (room‑level), humidity, air quality, energy
+consumption, device states (lights, HVAC, appliances), and occupancy. The agent receives a mixed stream of:
+
+- **Sensor readings**: structured numeric/boolean values per room, updated each step.
+- **User instructions**: interleaved exact commands (“turn off the living room light”) and fuzzy requests (“make the
+  house more comfortable”, “the electricity bill seems too high lately, do something”).
+
+Episodes last 200–500 steps. Events such as device failures, sudden weather changes, or unexpected visitors occur
+stochastically.
+
+### 3.2 Baselines
+
+- **Baseline 1 – Pure LLM Agent (Full Context)**  
+  At each step, the entire history of sensor readings and user instructions is concatenated into the prompt.
+  Summarization heuristics are applied when the token limit is approached. The LLM outputs a natural‑language action
+  that is parsed into device commands.
+
+- **Baseline 2 – LLM + RAG (Vector DB)**  
+  Historical observations are embedded and stored. At decision time, the agent retrieves the top‑k most similar past
+  entries to augment the prompt, following standard retrieval‑augmented generation practices.
+
+- **ACT‑R Harness (Proposed)**  
+  Production rule set: ~20 purely symbolic rules (hard thresholds, basic routines) and ~6 semantic‑enhanced rules (for
+  trend detection, analogy to past events, fuzzy instruction interpretation). Declarative memory stores percept
+  snapshots, user preferences, and past actions. Goal buffer encodes current task and strategy.
+
+### 3.3 Evaluation Metrics
+
+| Metric                       | Description                                                                                                                 |
+|------------------------------|-----------------------------------------------------------------------------------------------------------------------------|
+| Task success rate            | Percentage of episodes where all critical variables stay within safe bounds and user instructions are eventually satisfied. |
+| Fuzzy instruction fulfilment | Human rating (1–5) of how well ambiguous requests were addressed.                                                           |
+| Long‑range consistency       | Number of contradictions or forgotten commitments (e.g., turning off a device that was explicitly left on).                 |
+| Token consumption            | Average LLM input tokens per decision step.                                                                                 |
+| Explainability score         | Expert rating of the agent’s decision trace.                                                                                |
+| Adaptation speed             | Steps required to stabilize performance after a new rule is introduced (e.g., “activate energy‑saving mode”).               |
+| Sample efficiency            | Number of environment interactions needed to reach a target performance level relative to an RL‑tuned LLM policy.           |
+
+### 3.4 Expected Results
+
+- The Harness will consume **70‑80% fewer LLM tokens** per step than the full‑context baseline, while maintaining equal
+  or higher task success rates.
+- It will exhibit **significantly fewer long‑range consistency failures**, because declarative memory preserves user
+  preferences and past states independent of prompt truncation.
+- Fuzzy instruction fulfilment will be comparable or better, as the semantic layer can translate vague requests into
+  structured queries and action sequences that the pure LLM often glosses over.
+- Explainability scores will be markedly higher due to the structured trace.
+- Sample efficiency in utility learning will surpass that of fine‑tuning an LLM policy, with convergence in tens of
+  episodes rather than thousands.
+
+---
+
+*This document describes the ACT‑R Harness architecture and its expected AI‑centric benefits. The proposed experiments
+aim to produce publishable evidence that a neuro‑symbolic middleware can overcome fundamental limitations of monolithic
+LLM agents in long‑horizon, interpretable, and safe autonomous systems.*
 
 ## Getting Started
 
