@@ -4,10 +4,10 @@ namespace Harness.Core;
 
 public class StepClock : IClock
 {
-    public event IClock.AsyncEventHandler<StepState>? OnTick;
+    public event IClock.AsyncEventHandler<StepState>? OnTickAsync;
 
     public Task TickAsync(StepState stepState, CancellationToken cancellationToken)
     {
-        return OnTick?.Invoke(stepState, cancellationToken) ?? Task.CompletedTask;
+        return OnTickAsync?.Invoke(stepState, cancellationToken) ?? Task.CompletedTask;
     }
 }

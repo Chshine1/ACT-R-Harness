@@ -1,11 +1,9 @@
 import math
 import time
-
 import random
 from betterproto.lib.std.google.protobuf import Empty
 from ..generated.grpc.actr import MemoryChunk
-from ..generated.grpc.actr.services import DeclarativeMemoryBase, AddChunkRequest, RetrieveRequest, RetrieveResponse, \
-    UpdateActivationRequest
+from ..generated.grpc.actr.services import DeclarativeMemoryBase, AddChunkRequest, RetrieveRequest, RetrieveResponse, TickMemoryRequest
 
 
 class DeclarativeMemory(DeclarativeMemoryBase):
@@ -14,11 +12,12 @@ class DeclarativeMemory(DeclarativeMemoryBase):
         self.access_log: dict[str, list[float]] = {}
         self.decay = decay
         self.noise_sd = noise_sd
+        self._sim_time = time.time()
 
     async def add_chunk(self, add_chunk_request: AddChunkRequest) -> Empty:
         chunk = add_chunk_request.chunk
         self.chunks[chunk.id] = chunk
-        self.access_log[chunk.id] = [chunk.creation_time]
+        self.access_log[chunk.id] = [self._sim_time]
         return Empty()
 
     def _base_activation(self, chunk_id: str, current_time: float) -> float:
@@ -33,7 +32,7 @@ class DeclarativeMemory(DeclarativeMemoryBase):
     async def retrieve(self, retrieve_request: RetrieveRequest) -> RetrieveResponse:
         best = None
         best_act = -float('inf')
-        now = time.time()
+        now = self._sim_time
         for chunk in self.chunks.values():
             if all(chunk.slots.get(k) == v for k, v in retrieve_request.cue.items()):
                 base = self._base_activation(chunk.id, now)
@@ -46,6 +45,6 @@ class DeclarativeMemory(DeclarativeMemoryBase):
             self.access_log[best.id].append(now)
         return RetrieveResponse(chunk=best)
 
-    async def update_activation(self, update_activation_request: UpdateActivationRequest) -> Empty:
-        _ = update_activation_request
-        raise NotImplementedError()
+    async def tick_memory(self, tick_memory_request: TickMemoryRequest) -> Empty:
+        self._sim_time += tick_memory_request.delta_time
+        return Empty()

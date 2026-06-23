@@ -6,11 +6,12 @@ package actr.services;
 
 import "common.proto";
 import "google/protobuf/empty.proto";
+import "google/protobuf/struct.proto";
 
 service DeclarativeMemory {
   rpc AddChunk(AddChunkRequest) returns (google.protobuf.Empty);
   rpc Retrieve(RetrieveRequest) returns (RetrieveResponse);
-  rpc UpdateActivation(UpdateActivationRequest) returns (google.protobuf.Empty);
+  rpc TickMemory(TickMemoryRequest) returns (google.protobuf.Empty);
 }
 
 message AddChunkRequest {
@@ -25,7 +26,7 @@ message RetrieveResponse {
   optional MemoryChunk chunk = 1;
 }
 
-message UpdateActivationRequest {
-  string chunk_id = 1;
-  double delta = 2;
+message TickMemoryRequest {
+  double delta_time = 1;
+  google.protobuf.Struct buffer_snapshots = 2;
 }

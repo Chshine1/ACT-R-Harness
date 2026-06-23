@@ -13,7 +13,7 @@ public class ProceduralMemory : IProceduralMemory
     public ProceduralMemory(Abstractions.Actr.Services.ProceduralMemory.ProceduralMemoryClient client, IClock clock)
     {
         _client = client;
-        clock.OnTick += (reward, ct) =>
+        clock.OnTickAsync += (reward, ct) =>
         {
             if (!reward.Training) return Task.CompletedTask;
             return _lastRuleId == null ? throw new InvalidOperationException() : LearnUtilityAsync(reward.Reward, ct);

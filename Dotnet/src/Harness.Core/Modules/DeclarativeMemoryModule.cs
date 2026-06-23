@@ -6,10 +6,23 @@ using Harness.Abstractions.Actr.Services;
 
 namespace Harness.Core.Modules;
 
-public class DeclarativeMemoryModule(DeclarativeMemory.DeclarativeMemoryClient client)
-    : IModule
+public class DeclarativeMemoryModule : IModule
 {
+    private readonly DeclarativeMemory.DeclarativeMemoryClient _client;
+    private readonly IModuleRegistry _moduleRegistry;
     private MemoryChunk? _lastRetrieved;
+    private const double DefaultDeltaTimeSeconds = 60.0;
+
+    public DeclarativeMemoryModule(
+        DeclarativeMemory.DeclarativeMemoryClient client,
+        IClock clock,
+        IModuleRegistry moduleRegistry)
+    {
+        _client = client ?? throw new ArgumentNullException(nameof(client));
+        _moduleRegistry = moduleRegistry ?? throw new ArgumentNullException(nameof(moduleRegistry));
+        ArgumentNullException.ThrowIfNull(clock);
+        clock.OnTickAsync += OnTickAsync;
+    }
 
     public string ModuleId => "DeclarativeMemory";
 
@@ -19,14 +32,11 @@ public class DeclarativeMemoryModule(DeclarativeMemory.DeclarativeMemoryClient c
         {
             switch (op.Command)
             {
-                case "addChunk":
+                case "AddChunk":
                     AddChunk(op.Params);
                     break;
-                case "retrieve":
+                case "Retrieve":
                     Retrieve(op.Params);
-                    break;
-                case "updateActivation":
-                    UpdateActivation(op.Params);
                     break;
                 default:
                     throw new InvalidOperationException(
@@ -52,7 +62,7 @@ public class DeclarativeMemoryModule(DeclarativeMemory.DeclarativeMemoryClient c
             chunk.Slots.Add(slot.Key, slot.Value.StringValue);
         }
 
-        client.AddChunk(new AddChunkRequest { Chunk = chunk });
+        _client.AddChunk(new AddChunkRequest { Chunk = chunk });
     }
 
     private void Retrieve(Struct parameters)
@@ -63,18 +73,8 @@ public class DeclarativeMemoryModule(DeclarativeMemory.DeclarativeMemoryClient c
             request.Cue.Add(field.Key, field.Value.StringValue);
         }
 
-        var response = client.Retrieve(request);
+        var response = _client.Retrieve(request);
         _lastRetrieved = response.Chunk;
-    }
-
-    private void UpdateActivation(Struct parameters)
-    {
-        var request = new UpdateActivationRequest
-        {
-            ChunkId = parameters.Fields["chunk_id"].StringValue,
-            Delta = parameters.Fields["delta"].NumberValue
-        };
-        client.UpdateActivation(request);
     }
 
     public BufferState GetBufferState()
@@ -88,8 +88,7 @@ public class DeclarativeMemoryModule(DeclarativeMemory.DeclarativeMemoryClient c
                 {
                     ["id"] = Value.ForString(_lastRetrieved.Id),
                     ["creation_time"] = Value.ForNumber(_lastRetrieved.CreationTime),
-                    ["slots"] = Value.ForStruct(
-                        new Struct())
+                    ["slots"] = Value.ForStruct(new Struct())
                 }
             };
             var slotsStruct = new Struct();
@@ -115,33 +114,46 @@ public class DeclarativeMemoryModule(DeclarativeMemory.DeclarativeMemoryClient c
     {
         var schema = new ModuleSchema { ModuleId = ModuleId };
         schema.CommandSchemas.Add(
-            "addChunk",
-            """
-            {
-                "id": "string",
-                "creation_time": "number",
-                "slots": { "type": "object", "additionalProperties": "string" }
-            }
-            """
-        );
-        schema.CommandSchemas.Add(
-            "retrieve",
+            "AddChunk",
             """
             {
                 "type": "object",
-                "additionalProperties": "string"
+                "properties": {
+                    "id": { "type": "string" },
+                    "creation_time": { "type": "number" },
+                    "slots": { "type": "object", "additionalProperties": { "type": "string" } }
+                },
+                "required": ["id", "creation_time", "slots"]
             }
             """
         );
         schema.CommandSchemas.Add(
-            "updateActivation",
+            "Retrieve",
             """
             {
-                "chunk_id": "string",
-                "delta": "number"
+                "type": "object",
+                "additionalProperties": { "type": "string" }
             }
             """
         );
         return schema;
+    }
+
+    private async Task OnTickAsync(StepState stepState, CancellationToken cancellationToken)
+    {
+        var snapshots = new Struct();
+        foreach (var module in _moduleRegistry.GetModules())
+        {
+            var state = module.GetBufferState();
+            snapshots.Fields[state.ModuleId] = Value.ForStruct(state.Data);
+        }
+
+        var request = new TickMemoryRequest
+        {
+            DeltaTime = DefaultDeltaTimeSeconds,
+            BufferSnapshots = snapshots
+        };
+
+        await _client.TickMemoryAsync(request, cancellationToken: cancellationToken);
     }
 }
