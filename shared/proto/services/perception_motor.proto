@@ -31,7 +31,7 @@ message PopulationState {
   int32 engineers = 3;
   int32 children = 4;
   int32 sick = 5;
-  int32 hungry = 6;
+  double hungry = 6;
 }
 
 message SocialState {
@@ -71,7 +71,7 @@ message Building {
 message FrostpunkState {
   int32 day = 1;
   double time_of_day = 2;
-  map<string, double> resources = 3;
+  map<string, int32> resources = 3;
   PopulationState population = 4;
   SocialState social = 5;
   TemperatureState temperature = 6;
