@@ -14,7 +14,10 @@ public class ProceduralMemory : IProceduralMemory
     {
         _client = client;
         clock.OnTick += (reward, ct) =>
-            _lastRuleId == null ? throw new InvalidOperationException() : LearnUtilityAsync(reward, ct);
+        {
+            if (!reward.Training) return Task.CompletedTask;
+            return _lastRuleId == null ? throw new InvalidOperationException() : LearnUtilityAsync(reward.Reward, ct);
+        };
     }
 
     public IReadOnlyList<ProceduralCondition> GetAllConditions()

@@ -6,7 +6,7 @@ public class HarnessCore(IModuleRegistry moduleRegistry, IProceduralMemory proce
 {
     private readonly IReadOnlyCollection<IModule> _modules = moduleRegistry.GetModules();
     
-    public async Task StepAsync()
+    public async Task<bool> StepAsync()
     {
         var bufferStates = _modules.Select(m => m.GetBufferState()).ToList();
         var schemas = _modules.Select(m => m.GetOperationSchema()).ToList();
@@ -22,5 +22,7 @@ public class HarnessCore(IModuleRegistry moduleRegistry, IProceduralMemory proce
             var module = _modules.First(m => m.ModuleId == operation.TargetModuleId);
             module.OperateBuffer(operation);
         }
+        
+        return true;
     }
 }

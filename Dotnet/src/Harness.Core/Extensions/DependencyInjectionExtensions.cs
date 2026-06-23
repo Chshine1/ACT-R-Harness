@@ -12,6 +12,8 @@ public static class DependencyInjectionExtensions
     {
         public IServiceCollection AddHarnessCore()
         {
+            services.AddSingleton<IRewardService, HouseholdRewardService>();
+            
             services.AddSingleton<IClock, StepClock>();
             
             services.AddSingleton<DeclarativeMemoryModule>();
@@ -24,7 +26,10 @@ public static class DependencyInjectionExtensions
                 
                 registry.RegisterModule(sp.GetRequiredService<DeclarativeMemoryModule>());
                 registry.RegisterModule(sp.GetRequiredService<IntentionModule>());
-                registry.RegisterModule(sp.GetRequiredService<PerceptionMotorModule>());
+                
+                var perceptionMotor = sp.GetRequiredService<PerceptionMotorModule>();
+                registry.RegisterModule(perceptionMotor);
+                registry.RegisterRewardProvider(perceptionMotor);
                 
                 return registry;
             });

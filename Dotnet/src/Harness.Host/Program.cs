@@ -18,6 +18,7 @@ public class Program
             .ConfigureServices((context, services) =>
             {
                 services.Configure<GrpcClientsOptions>(context.Configuration.GetSection(GrpcClientsOptions.Section));
+                services.Configure<HarnessOptions>(context.Configuration.GetSection(HarnessOptions.Section));
 
                 services.AddSingleton(sp =>
                 {
@@ -45,7 +46,7 @@ public class Program
                 });
 
                 services.AddHarnessCore();
-                
+
                 services.AddHostedService<HarnessRunner>();
             })
             .Build();

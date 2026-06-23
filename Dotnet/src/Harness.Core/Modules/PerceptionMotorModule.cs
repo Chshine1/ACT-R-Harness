@@ -2,10 +2,13 @@
 using Harness.Abstractions;
 using Harness.Abstractions.Actr;
 using Harness.Abstractions.Actr.Services;
+using Type = System.Type;
 
 namespace Harness.Core.Modules;
 
-public class PerceptionMotorModule(FrostpunkWorld.FrostpunkWorldClient client, IClock clock) : IModule
+public record PerceptionRewardState;
+
+public class PerceptionMotorModule(FrostpunkWorld.FrostpunkWorldClient client) : IModule, IRewardStateProvider
 {
     private ResourceState? _resourceState;
     private PopulationState? _populationState;
@@ -171,5 +174,12 @@ public class PerceptionMotorModule(FrostpunkWorld.FrostpunkWorldClient client, I
             }
         };
         return schema;
+    }
+
+    public Type StateType => typeof(PerceptionRewardState);
+
+    public Task<object> GetRewardStateAsync(CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult<object>(new PerceptionRewardState());
     }
 }
