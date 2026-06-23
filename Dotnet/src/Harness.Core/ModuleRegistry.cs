@@ -11,7 +11,7 @@ public class ModuleRegistry : IModuleRegistry
         _modules.Add(module);
     }
 
-    public IReadOnlyList<IModule> GetModules()
+    public IReadOnlyCollection<IModule> GetModules()
     {
         return _modules;
     }

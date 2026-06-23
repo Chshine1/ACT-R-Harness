@@ -5,32 +5,42 @@ using Harness.Abstractions.Actr.Services;
 
 namespace Harness.Core;
 
-public class ProceduralMemory(Abstractions.Actr.Services.ProceduralMemory.ProceduralMemoryClient client)
-    : IProceduralMemory
+public class ProceduralMemory : IProceduralMemory
 {
+    private string? _lastRuleId;
+    private readonly Abstractions.Actr.Services.ProceduralMemory.ProceduralMemoryClient _client;
+
+    public ProceduralMemory(Abstractions.Actr.Services.ProceduralMemory.ProceduralMemoryClient client, IClock clock)
+    {
+        _client = client;
+        clock.OnTick += (reward, ct) =>
+            _lastRuleId == null ? throw new InvalidOperationException() : LearnUtilityAsync(reward, ct);
+    }
+
     public IReadOnlyList<ProceduralCondition> GetAllConditions()
     {
-        var response = client.GetAllConditions(new Empty());
+        var response = _client.GetAllConditions(new Empty());
         return response.Conditions;
     }
 
     public NeuroAction SelectRule(IReadOnlyList<string> satisfiedRuleIds)
     {
-        var response = client.SelectRule(
+        var response = _client.SelectRule(
             new SelectRuleRequest
             {
                 SatisfiedRuleIds = { satisfiedRuleIds }
             }
         );
+        _lastRuleId = response.RuleId;
         return response;
     }
 
-    public async Task LearnUtilityAsync(string ruleId, float reward, CancellationToken cancellationToken = default)
+    private async Task LearnUtilityAsync(float reward, CancellationToken cancellationToken = default)
     {
-        await client.LearnUtilityAsync(
+        await _client.LearnUtilityAsync(
             new LearnUtilityRequest
             {
-                RuleId = ruleId,
+                RuleId = _lastRuleId,
                 Reward = reward
             }, cancellationToken: cancellationToken
         );

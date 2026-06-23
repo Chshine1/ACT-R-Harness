@@ -12,6 +12,8 @@ public static class DependencyInjectionExtensions
     {
         public IServiceCollection AddHarnessCore()
         {
+            services.AddSingleton<IClock, StepClock>();
+            
             services.AddSingleton<DeclarativeMemoryModule>();
             services.AddSingleton<IntentionModule>();
             services.AddSingleton<PerceptionMotorModule>();

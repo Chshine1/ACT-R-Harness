@@ -1,16 +1,18 @@
-﻿using Harness.Core;
+﻿using Harness.Abstractions;
+using Harness.Core;
 using Microsoft.Extensions.Hosting;
 
 namespace Harness.Host;
 
-public class HarnessRunner(HarnessCore core) : BackgroundService
+public class HarnessRunner(HarnessCore core, IClock clock) : BackgroundService
 {
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    protected override async Task ExecuteAsync(CancellationToken cancellationToken)
     {
-        while (!stoppingToken.IsCancellationRequested)
+        while (!cancellationToken.IsCancellationRequested)
         {
-            await core.StepAsync(null);
-            await Task.Delay(100, stoppingToken);
+            await core.StepAsync();
+            await clock.TickAsync(0f, cancellationToken);
+            await Task.Delay(10, cancellationToken);
         }
     }
 }
