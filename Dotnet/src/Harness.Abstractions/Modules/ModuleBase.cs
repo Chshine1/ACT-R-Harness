@@ -10,7 +10,7 @@ namespace Harness.Abstractions.Modules;
 public abstract class ModuleBase : IModule
 {
     private record struct CommandCache(Action<IModule, Struct?> Action, string Schema);
-    
+
     private static readonly ConcurrentDictionary<Type, Dictionary<string, CommandCache>> cache = new();
     private readonly Dictionary<string, CommandCache> _commandMap;
 
@@ -23,7 +23,7 @@ public abstract class ModuleBase : IModule
     private static Dictionary<string, CommandCache> BuildCommandMap(Type moduleType)
     {
         var map = new Dictionary<string, CommandCache>();
-        var methods = moduleType.GetMethods(BindingFlags.Public | BindingFlags.Instance);
+        var methods = moduleType.GetMethods(BindingFlags.NonPublic | BindingFlags.Instance);
 
         foreach (var method in methods)
         {
@@ -40,27 +40,33 @@ public abstract class ModuleBase : IModule
 
             Expression call;
             string schema;
-            if (parameters.Length == 0)
+            switch (parameters.Length)
             {
-                call = Expression.Call(Expression.Convert(moduleParam, moduleType), method);
-                schema = "{}";
-            }
-            else
-            {
-                var paramType = parameters[0].ParameterType;
-                var fromStruct = paramType.GetMethod("FromStruct", BindingFlags.Public | BindingFlags.Static);
-                if (fromStruct is null)
-                    throw new InvalidOperationException(
-                        $"Parameter type {paramType.Name} must implement IStructRepresentable<> with static FromStruct.");
+                case > 1:
+                    throw new InvalidOperationException();
+                case 0:
+                    call = Expression.Call(Expression.Convert(moduleParam, moduleType), method);
+                    schema = "{}";
+                    break;
+                default:
+                {
+                    var paramType = parameters[0].ParameterType;
+                    var fromStruct = paramType.GetMethod("FromStruct", BindingFlags.Public | BindingFlags.Static);
+                    if (fromStruct is null)
+                        throw new InvalidOperationException(
+                            $"Parameter type {paramType.Name} must implement IStructRepresentable<> with static FromStruct.");
 
-                var paramAttr = paramType.GetCustomAttribute<ModuleCommandRequestAttribute>();
-                if (paramAttr is null)
-                    throw new ArgumentException("Module command parameter must have ModuleCommandRequestAttribute which annotates its schema.");
-                
-                schema = paramAttr.Schema;
+                    var paramAttr = paramType.GetCustomAttribute<ModuleCommandRequestAttribute>();
+                    if (paramAttr is null)
+                        throw new ArgumentException(
+                            "Module command parameter must have ModuleCommandRequestAttribute which annotates its schema.");
 
-                var deserialized = Expression.Call(fromStruct, structParam);
-                call = Expression.Call(Expression.Convert(moduleParam, moduleType), method, deserialized);
+                    schema = paramAttr.Schema;
+
+                    var deserialized = Expression.Call(fromStruct, structParam);
+                    call = Expression.Call(Expression.Convert(moduleParam, moduleType), method, deserialized);
+                    break;
+                }
             }
 
             var lambda = Expression.Lambda<Action<IModule, Struct?>>(call, moduleParam, structParam);
@@ -80,6 +86,7 @@ public abstract class ModuleBase : IModule
         {
             schema.CommandSchemas[cmdName] = c.Schema;
         }
+
         return schema;
     }
 

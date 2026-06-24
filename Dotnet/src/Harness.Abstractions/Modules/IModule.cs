@@ -1,8 +1,10 @@
 ﻿using Google.Protobuf.WellKnownTypes;
 using Harness.Abstractions.Actr;
+using JetBrains.Annotations;
 
 namespace Harness.Abstractions.Modules;
 
+[MeansImplicitUse]
 [AttributeUsage(AttributeTargets.Method)]
 public class ModuleCommandAttribute(string commandName) : Attribute
 {
@@ -18,6 +20,7 @@ public class ModuleCommandRequestAttribute(string schema) : Attribute
 public interface IStructRepresentable<out T> where T : class
 {
     static abstract T FromStruct(Struct value);
+    Struct ToStruct();
 }
 
 public interface IModule
