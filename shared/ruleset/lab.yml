@@ -1,0 +1,497 @@
+rules:
+  - id: "safety_high_temp_shutdown"
+    description: >
+      If any room temperature exceeds 60°C, clear all goals, push a safety
+      shutdown subgoal, and turn off appliances, lights, and set HVAC to
+      minimum safe temperature for that room.
+    condition: "any room in PerceptionMotor module has temperature > 60"
+    action:
+      commands:
+        clear:
+          target_module_id: "Intention"
+          command: "clearGoals"
+        pushSafety:
+          target_module_id: "Intention"
+          command: "pushSubgoal"
+          params:
+            id: "safety_shutdown"
+        appOff:
+          target_module_id: "PerceptionMotor"
+          command: "SetAppliance"
+          params:
+            on: false
+        lightOff:
+          target_module_id: "PerceptionMotor"
+          command: "SetLight"
+          params:
+            on: false
+        hvacMin:
+          target_module_id: "PerceptionMotor"
+          command: "SetHVAC"
+          params:
+            targetTemp: 5.0
+      semantics:
+        "command:pushSafety":
+          slots: "an object with reason 'high_temperature' and severity 'critical'"
+        "command:appOff":
+          description: "apply to the room index where temperature > 60"
+        "command:lightOff":
+          description: "apply to the same room index"
+        "command:hvacMin":
+          description: "apply to the same room index"
+
+  - id: "safety_poor_air_quality_shutdown"
+    description: >
+      If any room air quality is critically low (LLM judges danger, e.g.,
+      smoke/gas indication), clear all goals, push safety subgoal, and
+      turn off all appliances and lights for that room. HVAC set to minimum.
+    condition: "PerceptionMotor module shows critical air_quality in any room (LLM common sense)"
+    action:
+      commands:
+        clear:
+          target_module_id: "Intention"
+          command: "clearGoals"
+        pushSafety:
+          target_module_id: "Intention"
+          command: "pushSubgoal"
+          params:
+            id: "safety_shutdown"
+        appOff:
+          target_module_id: "PerceptionMotor"
+          command: "SetAppliance"
+          params:
+            on: false
+        lightOff:
+          target_module_id: "PerceptionMotor"
+          command: "SetLight"
+          params:
+            on: false
+        hvacMin:
+          target_module_id: "PerceptionMotor"
+          command: "SetHVAC"
+          params:
+            targetTemp: 5.0
+      semantics:
+        "command:pushSafety":
+          slots: "reason: 'air_quality_critical', severity: 'critical'"
+        "command:appOff":
+          description: "for the room with critical air quality"
+        "command:lightOff":
+          description: "same room"
+        "command:hvacMin":
+          description: "same room"
+
+  - id: "goal_set_when_empty"
+    description: >
+      If the Intention module has no current goal and safety is not active,
+      push a free exploration goal to gather experience.
+    condition: >
+      Intention module current_goal is null AND no goal with id 'safety_shutdown'
+      exists on the stack (check next_goal and the rest of the stack information
+      exposed in the buffer if available, or infer from context).
+    action:
+      commands:
+        setGoal:
+          target_module_id: "Intention"
+          command: "setGoal"
+          params:
+            id: "free_exploration"
+      semantics:
+        "command:setGoal":
+          slots: >
+            An object containing the exploration intention, e.g.:
+            { "type": "free_exploration",
+              "focus": "any module",
+              "max_actions": 5,
+              "record": true }
+
+  - id: "goal_replace_on_user_intent"
+    description: >
+      When a simulated user intent is detected via DeclarativeMemory (chunk
+      with type 'user_intent'), clear the stack and set the user intent as
+      the new goal, unless safety is active.
+    condition: >
+      DeclarativeMemory retrieved_chunk has slot type = 'user_intent'
+      AND Intention module current_goal.id (if any) != 'safety_shutdown'
+      (examine current_goal, last_goal_id, goal_just_changed fields in buffer
+      to determine safety status and avoid overwriting safety).
+    action:
+      commands:
+        clear:
+          target_module_id: "Intention"
+          command: "clearGoals"
+        setUserGoal:
+          target_module_id: "Intention"
+          command: "setGoal"
+          params:
+            id: "user_request"
+      semantics:
+        "command:setUserGoal":
+          slots: "extract the 'content' field from the retrieved_chunk's slots"
+
+  - id: "goal_push_subgoal_compatible"
+    description: >
+      When a retrieved memory chunk represents a user sub‑task that is
+      compatible with the current goal (LLM judges), and stack has room,
+      push it as a subgoal, if safety not active.
+    condition: >
+      DeclarativeMemory retrieved_chunk has type = 'user_subtask'
+      AND Intention module stack_depth < max_capacity
+      AND current_goal.id (if any) != 'safety_shutdown'
+      AND LLM judges the subtask compatible with current_goal
+    action:
+      commands:
+        push:
+          target_module_id: "Intention"
+          command: "pushSubgoal"
+      semantics:
+        "command:push":
+          id: "generated from subtask content"
+          slots: "extract subtask details from retrieved_chunk"
+
+  - id: "goal_pop_when_achieved"
+    description: >
+      If the current goal is judged successfully achieved (LLM assesses
+      from perception and memory), pop it, unless it is a safety subgoal.
+    condition: >
+      Intention module current_goal is not null
+      AND current_goal.id != 'safety_shutdown'
+      AND LLM assesses that the goal's conditions are met given
+      PerceptionMotor state and DeclarativeMemory recent chunks
+    action:
+      commands:
+        pop:
+          target_module_id: "Intention"
+          command: "popGoal"
+
+  - id: "goal_pop_when_impossible"
+    description: >
+      If the current goal is deemed impossible (LLM judges, e.g., conflict
+      with physical limits), pop it to release the stack, unless safety.
+    condition: >
+      Intention module current_goal is not null
+      AND current_goal.id != 'safety_shutdown'
+      AND LLM determines the goal cannot be satisfied
+    action:
+      commands:
+        pop:
+          target_module_id: "Intention"
+          command: "popGoal"
+
+  - id: "goal_modify_slot_from_memory"
+    description: >
+      If a retrieved memory suggests a slot adjustment for the current
+      goal (e.g., updated user preference), modify that slot, if safety
+      is not active.
+    condition: >
+      Intention module current_goal is not null
+      AND current_goal.id != 'safety_shutdown'
+      AND DeclarativeMemory retrieved_chunk contains a suggested update
+      for a slot of current_goal
+    action:
+      commands:
+        mod:
+          target_module_id: "Intention"
+          command: "modifySlot"
+      semantics:
+        "command:mod":
+          slot: "the slot name to update (from chunk)"
+          value: "new value extracted from retrieved_chunk"
+
+  - id: "goal_decompose_complex"
+    description: >
+      If the current goal is described as complex (LLM judges, e.g.,
+      'make house comfortable and efficient'), push a sequence of
+      subgoals to break it down, if safety not active.
+    condition: >
+      Intention module current_goal is not null
+      AND current_goal.id != 'safety_shutdown'
+      AND LLM determines the goal requires multiple steps
+    action:
+      commands:
+        push:
+          target_module_id: "Intention"
+          command: "pushSubgoal"
+      semantics:
+        "command:push":
+          description: >
+            Generate 2-3 subgoals that decompose the main goal (e.g., first
+            achieve comfort in occupied rooms, then optimise energy). Each
+            subgoal's id and slots are semantically derived.
+
+  - id: "recovery_after_safety"
+    description: >
+      Once the safety condition is resolved (all rooms temperature < 50,
+      air quality safe), pop the safety subgoal and set an idle monitoring
+      goal.
+    condition: >
+      Intention module current_goal.id = 'safety_shutdown'
+      AND all rooms in PerceptionMotor have temperature < 50
+      AND air quality judged safe by LLM
+    action:
+      commands:
+        popSafety:
+          target_module_id: "Intention"
+          command: "popGoal"
+        setIdle:
+          target_module_id: "Intention"
+          command: "setGoal"
+          params:
+            id: "idle_monitoring"
+      semantics:
+        "command:setIdle":
+          slots: "a monitoring goal with low energy usage, e.g. maintain status quo"
+
+  - id: "memory_record_on_change"
+    description: >
+      When perception differs notably from the last stored memory (temp
+      change > 2°C, humidity > 10%, or goal changed), store a new
+      episodic chunk.
+    condition: >
+      DeclarativeMemory retrieved_chunk exists
+      AND ( (any room temperature in PerceptionMotor differs by >2°C from
+      that in retrieved_chunk, OR humidity differs by >10%)
+      OR Intention module goal_just_changed is true ).
+      Note: the buffer field 'goal_just_changed' indicates whether the
+      current goal id changed since last cycle.
+    action:
+      commands:
+        add:
+          target_module_id: "DeclarativeMemory"
+          command: "AddChunk"
+      semantics:
+        "command:add":
+          description: >
+            Compose a chunk with id = "ep_<timestamp>", creation_time = now,
+            slots containing current rooms (serialised), total_energy, and
+            the current goal id. Add a slot "change_summary" describing the delta.
+
+  - id: "memory_record_on_goal_success"
+    description: >
+      After a goal is successfully completed (stack top popped and last
+      goal was non‑safety), store the episode with a success tag.
+    condition: >
+      Intention module current_goal is null
+      AND goal_just_changed is true
+      AND last_goal_id is not null
+      AND last_goal_id != 'safety_shutdown'.
+      (These buffer fields together indicate a goal was just popped
+      and it was not a safety shutdown.)
+    action:
+      commands:
+        add:
+          target_module_id: "DeclarativeMemory"
+          command: "AddChunk"
+      semantics:
+        "command:add":
+          description: >
+            Store a chunk with "type": "goal_success", the completed goal id
+            (use last_goal_id from buffer), final perception state, and total energy.
+
+  - id: "memory_retrieve_on_new_goal"
+    description: >
+      When the current goal changes (new set or push), retrieve past episodes
+      with similar goal descriptions or contextual features.
+    condition: >
+      Intention module current_goal is not null
+      AND goal_just_changed is true
+      AND current_goal.id != 'safety_shutdown'.
+      (This fires exactly once when a new goal appears, avoiding repeated retrievals.)
+    action:
+      commands:
+        query:
+          target_module_id: "DeclarativeMemory"
+          command: "Retrieve"
+      semantics:
+        "command:query":
+          description: >
+            Formulate a Retrieve query (key‑value pairs) based on the
+            current goal's slots, e.g. {"intent_type": "cooling",
+            "target_feeling": "cool", "time_of_day": "..."}. The query
+            keys should match those used in stored memory slots.
+
+  - id: "memory_retrieve_recent_actions"
+    description: >
+      Periodically retrieve the most recent recorded episode to serve as
+      working memory context for action rules.
+    condition: >
+      DeclarativeMemory retrieved_chunk is null (no active retrieval) and
+      at least one chunk exists in memory
+    action:
+      commands:
+        query:
+          target_module_id: "DeclarativeMemory"
+          command: "Retrieve"
+
+  - id: "perception_focus_room"
+    description: >
+      If the current goal specifies a particular room, store an attention
+      hint chunk so subsequent operations can prioritise that room.
+    condition: >
+      Intention module current_goal contains a slot referencing a room index
+      AND current_goal.id != 'safety_shutdown'
+    action:
+      commands:
+        storeHint:
+          target_module_id: "DeclarativeMemory"
+          command: "AddChunk"
+      semantics:
+        "command:storeHint":
+          description: "Store a chunk with type 'attention_focus', indicating which room index to prioritise."
+
+  - id: "monitor_high_energy_alert"
+    description: >
+      If total energy consumption exceeds an upper safety threshold (3000),
+      and no energy‑saving or safety goal is active, push an energy saving
+      subgoal to override comfort actions.
+    condition: >
+      PerceptionMotor module total_energy > 3000
+      AND Intention module current_goal.id not in ['safety_shutdown', 'energy_saving']
+      (also examine next_goal if present to avoid duplicate push).
+    action:
+      commands:
+        pushSave:
+          target_module_id: "Intention"
+          command: "pushSubgoal"
+          params:
+            id: "energy_saving"
+      semantics:
+        "command:pushSave":
+          slots: "description: 'Reduce total energy below 2500 while maintaining minimal comfort'"
+
+  - id: "meta_reset_exploration"
+    description: >
+      If the same non‑safety goal has been pushed and popped repeatedly,
+      inject a forced exploration subgoal to escape the local optimum.
+    condition: >
+      Intention module current_goal is not null
+      AND current_goal.id != 'safety_shutdown'
+      AND (
+        (current_goal.id == next_goal.id)   // the goal immediately below is the same
+        OR DeclarativeMemory recent chunks show the same goal id popped/pushed
+           more than 3 times without progress
+      )
+      AND no forced_exploration subgoal already on the stack.
+    action:
+      commands:
+        pushExplore:
+          target_module_id: "Intention"
+          command: "pushSubgoal"
+          params:
+            id: "forced_exploration"
+      semantics:
+        "command:pushExplore":
+          slots: >
+            { "type": "forced_exploration", "reason": "escape_local_optimum",
+              "max_actions": 3, "target_module": "PerceptionMotor" }
+
+  - id: "action_cooling"
+    description: >
+      If the current goal is to cool down (slots indicate cooling intent),
+      generate a SetHVAC command with a target temperature lower than
+      current, respecting comfort and energy.
+    condition: >
+      Intention module current_goal.id != 'safety_shutdown'
+      AND LLM detects cooling intent in current goal's slots
+    action:
+      commands:
+        hvacCool:
+          target_module_id: "PerceptionMotor"
+          command: "SetHVAC"
+      semantics:
+        "command:hvacCool":
+          description: >
+            For the relevant room(s) (based on goal or attention focus),
+            set targetTemp to a value lower than current room temperature,
+            derived from the goal's comfort specification and current state.
+
+  - id: "action_heating"
+    description: >
+      If the current goal is to heat up, generate a SetHVAC command with
+      a target temperature higher than current.
+    condition: >
+      Intention module current_goal.id != 'safety_shutdown'
+      AND LLM detects heating intent in current goal's slots
+    action:
+      commands:
+        hvacHeat:
+          target_module_id: "PerceptionMotor"
+          command: "SetHVAC"
+      semantics:
+        "command:hvacHeat":
+          description: >
+            For the relevant room(s), set targetTemp to a value higher than
+            current room temperature, based on goal's comfort specification.
+
+  - id: "action_energy_saving"
+    description: >
+      If the current goal is energy saving, turn off non‑essential
+      appliances/lights and adjust HVAC to an efficient baseline.
+    condition: >
+      Intention module current_goal.id == 'energy_saving'
+      OR (current_goal.id != 'safety_shutdown' AND LLM detects strong
+      energy saving intent in slots)
+    action:
+      commands:
+        appOff:
+          target_module_id: "PerceptionMotor"
+          command: "SetAppliance"
+          params:
+            on: false
+        lightOff:
+          target_module_id: "PerceptionMotor"
+          command: "SetLight"
+          params:
+            on: false
+        hvacEco:
+          target_module_id: "PerceptionMotor"
+          command: "SetHVAC"
+      semantics:
+        "command:hvacEco":
+          description: >
+            Set targetTemp to a moderate value (e.g., near outdoor ambient)
+            to save energy while avoiding extreme discomfort.
+        "command:appOff":
+          description: "Apply to all rooms unless goal specifies otherwise."
+        "command:lightOff":
+          description: "Apply to all rooms unless goal specifies otherwise."
+
+  - id: "action_explore_random"
+    description: >
+      If the current goal is exploration (free or forced), execute a
+      random PerceptionMotor action to gather diverse experience.
+    condition: >
+      Intention module current_goal.id in ['free_exploration', 'forced_exploration']
+      AND current_goal.id != 'safety_shutdown'
+    action:
+      semantics:
+        "neuro:RandomExplorationAction":
+          description: >
+            Generate a random Operation for PerceptionMotor:
+            - Randomly choose among SetLight, SetHVAC, SetAppliance.
+            - Choose a random room index from the available rooms.
+            - For SetHVAC, choose a reasonable targetTemp within [18, 28].
+            - For SetLight/SetAppliance, choose on: true/false randomly.
+            Output the resulting command with filled params.
+
+  - id: "action_generic_goal"
+    description: >
+      For any non‑safety goal not covered by the above specific rules,
+      let the LLM interpret the goal and current state to propose a
+      concrete PerceptionMotor operation.
+    condition: >
+      Intention module current_goal is not null
+      AND current_goal.id != 'safety_shutdown'
+      AND goal does not match specific action rules (cooling, heating,
+      energy saving, exploration). LLM should infer that by checking
+      current_goal.id and slots.
+    action:
+      semantics:
+        "neuro:GenericActionProposal":
+          description: >
+            Based on the current goal's description and slots, and the
+            current PerceptionMotor state (rooms data), propose a single
+            concrete PerceptionMotor command (SetLight, SetHVAC, or
+            SetAppliance) with filled parameters that moves the
+            environment toward the goal. Use no hard‑coded thresholds.
+            Output a BufferOperation.

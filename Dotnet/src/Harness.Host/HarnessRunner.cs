@@ -1,4 +1,5 @@
 ﻿using Harness.Abstractions;
+using Harness.Abstractions.Reward;
 using Harness.Core;
 using Harness.Host.Options;
 using Microsoft.Extensions.Hosting;

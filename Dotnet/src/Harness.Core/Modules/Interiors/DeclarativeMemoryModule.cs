@@ -3,6 +3,7 @@ using Grpc.Core;
 using Harness.Abstractions;
 using Harness.Abstractions.Actr;
 using Harness.Abstractions.Actr.Services;
+using Harness.Abstractions.Modules;
 
 namespace Harness.Core.Modules;
 

@@ -8,6 +8,7 @@ public partial class IntentionModule
     private const int MaxStackSize = 7;
 
     private readonly Stack<Goal> _goalStack = new();
+    private string? _lastExposedGoalId;
 
     public void OperateBuffer(BufferOperation op)
     {

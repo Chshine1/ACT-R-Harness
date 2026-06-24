@@ -1,4 +1,4 @@
-﻿namespace Harness.Abstractions;
+﻿namespace Harness.Abstractions.Reward;
 
 public interface IRewardStateProvider
 {

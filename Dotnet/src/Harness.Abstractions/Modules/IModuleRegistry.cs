@@ -1,4 +1,6 @@
-﻿namespace Harness.Abstractions;
+﻿using Harness.Abstractions.Reward;
+
+namespace Harness.Abstractions.Modules;
 
 public interface IModuleRegistry
 {

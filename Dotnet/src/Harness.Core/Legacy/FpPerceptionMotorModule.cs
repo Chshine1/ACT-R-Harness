@@ -2,6 +2,7 @@
 using Harness.Abstractions;
 using Harness.Abstractions.Actr;
 using Harness.Abstractions.Actr.Services;
+using Harness.Abstractions.Modules;
 using JetBrains.Annotations;
 
 namespace Harness.Core.Legacy;

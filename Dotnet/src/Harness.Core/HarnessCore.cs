@@ -1,4 +1,5 @@
 ﻿using Harness.Abstractions;
+using Harness.Abstractions.Modules;
 
 namespace Harness.Core;
 

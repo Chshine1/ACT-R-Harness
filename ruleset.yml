@@ -1,0 +1,35 @@
+rules:
+  - id: "unique-rule-id" # required, string
+    description: "optional human-readable rule description"
+    condition: # optional, no condition means constant true
+      symbolic: # optional, symbolic condition tree
+        type: "and | or | not | equals | exist"
+        # based on the type field's value, the rest fields are as follows
+        # and / or:
+        conditions:
+          - <condition>
+          - ...
+        # not:
+        condition: <condition>
+        # equals / exist:
+        slot: "read buffer top field name"
+        # equals(additional):
+        value: <literal value>
+      semantic: "any string or structural hint"   # optional
+    action: # required
+      commands: # optional, concrete operations
+        someKey: # any identifier, for internal cross‑reference
+          target_module_id: "<ModuleId>"
+          command: "<CommandName>"   # as declared in the module's GetOperationSchema()
+          params: # must conform to the command's JSON schema; may be partial
+            <paramName>: <value>
+      semantics: # optional, LLM‑assisted completion or control hints
+        # Key prefixes tell NeuroCore how to interpret the entry:
+        #   "command:<CmdName>" – supplements an existing command (e.g., fills missing params,
+        #                         expands scope); the target module and command are already fixed.
+        #   "neuro:<Intent>"    – generates brand‑new BufferOperations from an intent description;
+        #                         must respect all module schemas.
+        #   "meta:<Aspect>"     – influences the merging/execution process (e.g., priority, ordering);
+        #                         does not produce any operation.
+        "<prefix>:<Name>":
+          <hint or structured object>
