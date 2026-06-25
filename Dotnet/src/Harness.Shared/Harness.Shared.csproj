@@ -6,9 +6,4 @@
         <Nullable>enable</Nullable>
     </PropertyGroup>
 
-    <ItemGroup>
-      <ProjectReference Include="..\Harness.Abstractions\Harness.Abstractions.csproj" />
-      <ProjectReference Include="..\Harness.Shared\Harness.Shared.csproj" />
-    </ItemGroup>
-
 </Project>

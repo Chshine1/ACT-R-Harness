@@ -19,5 +19,6 @@
         <Project Path="src/Harness.Codebase/Harness.Codebase.csproj" />
         <Project Path="src/Harness.Core/Harness.Core.csproj" />
         <Project Path="src/Harness.Host/Harness.Host.csproj" />
+        <Project Path="src/Harness.Shared/Harness.Shared.csproj" />
     </Folder>
 </Solution>
