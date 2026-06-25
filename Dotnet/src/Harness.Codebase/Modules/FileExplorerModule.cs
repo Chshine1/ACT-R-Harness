@@ -90,8 +90,8 @@ public class FileExplorerModule : ModuleBase
         EnsureDirectoryLoaded(_currentDirectory);
     }
 
-    [ModuleCommand("add_attention_tag")]
-    protected void AddAttentionTag(SetAttentionTagsRequest request)
+    [ModuleCommand("set_attention_tag")]
+    protected void SetAttentionTags(SetAttentionTagsRequest request)
     {
         _attentionTags.Clear();
         foreach (var tag in request.Tags.Where(t => !string.IsNullOrWhiteSpace(t)))
