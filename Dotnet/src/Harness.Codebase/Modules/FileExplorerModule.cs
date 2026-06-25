@@ -100,9 +100,6 @@ public class FileExplorerModule : ModuleBase
         }
     }
 
-    [ModuleCommand("clear_attention_tags")]
-    protected void ClearAttentionTags() => _attentionTags.Clear();
-
     [ModuleCommand("refresh")]
     protected void Refresh()
     {
