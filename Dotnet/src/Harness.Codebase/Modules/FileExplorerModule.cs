@@ -2,23 +2,23 @@
 using Harness.Abstractions;
 using Harness.Abstractions.Actr;
 using Harness.Abstractions.Modules;
-using System.Collections.Concurrent;
 using Harness.Shared.Utils;
+using System.Collections.Concurrent;
 
 namespace Harness.Codebase.Modules;
 
 [ModuleCommandRequest("""{ "path": { "type": "string" } }""")]
-public record FocusDirectoryRequest(string Path) : IStructRepresentable<FocusDirectoryRequest>
+public record GotoDirectoryRequest(string Path) : IStructRepresentable<GotoDirectoryRequest>
 {
     public Struct ToStruct() => new() { Fields = { ["path"] = Value.ForString(Path) } };
-    public static FocusDirectoryRequest FromStruct(Struct s) => new(s.Fields["path"].StringValue);
+    public static GotoDirectoryRequest FromStruct(Struct s) => new(s.Fields["path"].StringValue);
 }
 
 [ModuleCommandRequest("""{ "name": { "type": "string" } }""")]
-public record ExpandEntryRequest(string Name) : IStructRepresentable<ExpandEntryRequest>
+public record EnterSubdirectoryRequest(string Name) : IStructRepresentable<EnterSubdirectoryRequest>
 {
     public Struct ToStruct() => new() { Fields = { ["name"] = Value.ForString(Name) } };
-    public static ExpandEntryRequest FromStruct(Struct s) => new(s.Fields["name"].StringValue);
+    public static EnterSubdirectoryRequest FromStruct(Struct s) => new(s.Fields["name"].StringValue);
 }
 
 [ModuleCommandRequest("""{ "tags": { "type": "array", "items": { "type": "string" } } }""")]
@@ -62,7 +62,10 @@ public class FileExplorerModule : ModuleBase
     private readonly IEmbeddingService _embedding;
 
     private string _currentDirectory = string.Empty;
-    private readonly ConcurrentBag<string> _attentionTags = [];
+    private string[] _attentionTags = [];
+    private readonly Stack<string> _backStack = new();
+    private readonly Stack<string> _forwardStack = new();
+
     private readonly ConcurrentDictionary<string, List<VisibleEntry>> _directoryCache = new();
     private readonly ConcurrentDictionary<string, float[]> _embeddingCache = new();
 
@@ -75,36 +78,69 @@ public class FileExplorerModule : ModuleBase
         clock.OnTickAsync += OnTickAsync;
     }
 
-    [ModuleCommand("focus_directory")]
-    protected void FocusDirectory(FocusDirectoryRequest request)
+    [ModuleCommand("goto_directory")]
+    protected void GotoDirectory(GotoDirectoryRequest request)
     {
-        _currentDirectory = request.Path;
+        var path = request.Path;
+        if (string.IsNullOrWhiteSpace(path) || path == _currentDirectory) return;
+        if (!Directory.Exists(path)) return;
+
+        PushToHistory(_currentDirectory);
+        _currentDirectory = path;
+        _forwardStack.Clear();
         EnsureDirectoryLoaded(_currentDirectory);
     }
 
-    [ModuleCommand("expand_entry")]
-    protected void ExpandEntry(ExpandEntryRequest request)
+    [ModuleCommand("enter_subdirectory")]
+    protected void EnterSubdirectory(EnterSubdirectoryRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.Name)) return;
-        _currentDirectory = Path.Combine(_currentDirectory, request.Name);
+        var target = Path.Combine(_currentDirectory, request.Name);
+        if (!Directory.Exists(target)) return;
+
+        PushToHistory(_currentDirectory);
+        _currentDirectory = target;
+        _forwardStack.Clear();
         EnsureDirectoryLoaded(_currentDirectory);
     }
 
-    [ModuleCommand("set_attention_tag")]
+    [ModuleCommand("go_to_parent")]
+    protected void GoToParent()
+    {
+        var parent = Directory.GetParent(_currentDirectory);
+        if (parent == null) return;
+
+        PushToHistory(_currentDirectory);
+        _currentDirectory = parent.FullName;
+        _forwardStack.Clear();
+        EnsureDirectoryLoaded(_currentDirectory);
+    }
+
+    [ModuleCommand("navigate_back")]
+    protected void NavigateBack()
+    {
+        if (_backStack.Count == 0) return;
+        _forwardStack.Push(_currentDirectory);
+        _currentDirectory = _backStack.Pop();
+        EnsureDirectoryLoaded(_currentDirectory);
+    }
+
+    [ModuleCommand("navigate_forward")]
+    protected void NavigateForward()
+    {
+        if (_forwardStack.Count == 0) return;
+        _backStack.Push(_currentDirectory);
+        _currentDirectory = _forwardStack.Pop();
+        EnsureDirectoryLoaded(_currentDirectory);
+    }
+
+    [ModuleCommand("set_attention_tags")]
     protected void SetAttentionTags(SetAttentionTagsRequest request)
     {
-        _attentionTags.Clear();
-        foreach (var tag in request.Tags.Where(t => !string.IsNullOrWhiteSpace(t)))
-        {
-            _attentionTags.Add(tag.Trim().ToLowerInvariant());
-        }
-    }
-
-    [ModuleCommand("refresh")]
-    protected void Refresh()
-    {
-        _directoryCache.TryRemove(_currentDirectory, out _);
-        EnsureDirectoryLoaded(_currentDirectory);
+        _attentionTags = request.Tags
+            .Where(t => !string.IsNullOrWhiteSpace(t))
+            .Select(t => t.Trim().ToLowerInvariant())
+            .ToArray();
     }
 
     public override BufferState GetBufferState()
@@ -120,21 +156,32 @@ public class FileExplorerModule : ModuleBase
             _visibleEntriesLock.Release();
         }
 
+        var parent = Directory.GetParent(_currentDirectory);
         var data = new Struct
         {
             Fields =
             {
-                ["current_directory"] = Value.ForString(_currentDirectory),
-                ["visible_entries"] = entries.Count > 0
+                ["current_path"] = Value.ForString(_currentDirectory),
+                ["entries"] = entries.Count > 0
                     ? Value.ForList(entries.Select(e => Value.ForStruct(e.ToStruct())).ToArray())
                     : Value.ForNull(),
-                ["is_at_root"] = Value.ForBool(IsAtProjectRoot(_currentDirectory)),
-                ["parent_path"] = Directory.GetParent(_currentDirectory) is { } parent
-                    ? Value.ForString(parent.FullName)
-                    : Value.ForNull()
+                ["attention_tags"] = _attentionTags.Length > 0
+                    ? Value.ForList(_attentionTags.Select(Value.ForString).ToArray())
+                    : Value.ForNull(),
+                ["can_go_back"] = Value.ForBool(_backStack.Count > 0),
+                ["can_go_forward"] = Value.ForBool(_forwardStack.Count > 0),
+                ["parent_path"] = parent is not null ? Value.ForString(parent.FullName) : Value.ForNull()
             }
         };
         return new BufferState { ModuleId = ModuleId, Data = data };
+    }
+
+    private void PushToHistory(string path)
+    {
+        if (!string.IsNullOrEmpty(path))
+        {
+            _backStack.Push(path);
+        }
     }
 
     private async Task OnTickAsync(StepState state, CancellationToken cancellationToken)
@@ -154,10 +201,9 @@ public class FileExplorerModule : ModuleBase
         }
 
         float[]? contextVec = null;
-        var tags = _attentionTags.ToArray();
-        if (tags.Length > 0)
+        if (_attentionTags.Length > 0)
         {
-            var missingTags = tags
+            var missingTags = _attentionTags
                 .Where(t => !_embeddingCache.ContainsKey(t))
                 .Distinct()
                 .ToList();
@@ -168,7 +214,7 @@ public class FileExplorerModule : ModuleBase
             }
 
             var tagVecs = new List<float[]>();
-            foreach (var tag in tags)
+            foreach (var tag in _attentionTags)
             {
                 if (_embeddingCache.TryGetValue(tag, out var vec)) tagVecs.Add(vec);
             }
@@ -231,9 +277,12 @@ public class FileExplorerModule : ModuleBase
         if (!Directory.Exists(path)) return;
 
         var entries = Directory.GetDirectories(path)
-            .Select(dir => new VisibleEntry(Path.GetFileName(dir), EntryType.Directory, null, 0, 0f)).ToList();
+            .Select(dir => new VisibleEntry(Path.GetFileName(dir), EntryType.Directory, null, 0, 0f))
+            .ToList();
+
         entries.AddRange(Directory.GetFiles(path).Select(file => new FileInfo(file)).Select(info =>
             new VisibleEntry(info.Name, EntryType.File, info.Extension, info.Length, 0f)));
+
         _directoryCache[path] = entries;
 
         _ = Task.Run(async () =>
@@ -241,17 +290,5 @@ public class FileExplorerModule : ModuleBase
             var names = entries.Select(e => e.Name).Distinct().ToList();
             await FetchAndCacheEmbeddingsAsync(names, CancellationToken.None);
         });
-    }
-
-    private static bool IsAtProjectRoot(string path)
-    {
-        var parent = Directory.GetParent(path);
-        if (parent == null) return true;
-        string[] markers = [".git", "README.md", "*.sln", "*.csproj", "package.json"];
-        return markers
-            .Any(m =>
-                Directory.GetFiles(parent.FullName, m).Length != 0 ||
-                Directory.GetDirectories(parent.FullName, m).Length != 0
-            );
     }
 }

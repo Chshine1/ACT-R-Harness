@@ -11,6 +11,7 @@ public class ModuleCommandAttribute(string commandName) : Attribute
     public string CommandName { get; } = commandName;
 }
 
+[MeansImplicitUse]
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct)]
 public class ModuleCommandRequestAttribute(string schema) : Attribute
 {
