@@ -1,16 +1,23 @@
 [project]
 authors = [{name = "Chshine1", email = "chshine@qq.com"}]
-name = "python"
+name = "actr_harness"
 requires-python = ">= 3.11"
 version = "0.1.0"
+dependencies = ["openai>=2.46.0,<3"]
 
 [build-system]
 build-backend = "hatchling.build"
 requires = ["hatchling"]
 
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
 [tool.pixi.workspace]
 channels = ["conda-forge"]
 platforms = ["win-64", "linux-64"]
+
+[tool.pixi.environments]
+dev = ["default", "dev"]
 
 [tool.pixi.pypi-options]
 no-build-isolation = ["grpcio-tools"]
@@ -28,12 +35,10 @@ pyyaml = ">=6.0.3,<7"
 ca-certificates = ">=2026.6.17,<2027"
 
 [tool.pixi.pypi-dependencies]
+actr_harness = { path = ".", editable = true }
 grpclib = ">=0.4.9,<0.5"
 betterproto = "==2.0.0b7"
 httpx = ">=0.28.1,<0.29"
-
-[tool.pixi.feature.dev.dependencies]
-pytest = ">=9.1.1,<10"
 
 [tool.pixi.feature.dev.pypi-dependencies]
 decoy = ">=2.6.0, <3"
@@ -44,9 +49,9 @@ setuptools = ">=82.0.1, <83"
 pyrefly = ">=1.1.1, <2"
 betterproto = { version = "==2.0.0b7", extras = ["compiler"] }
 grpcio-tools = ">=1.81.1, <2"
-
-[tool.pixi.environments]
-dev = ["default", "dev"]
+pytest = ">=9.1.1, <10"
+pytest-asyncio = ">=1.4.0, <2"
+pytest-vcr = ">=1.0.2, <2"
 
 [tool.pyright]
 root = "."

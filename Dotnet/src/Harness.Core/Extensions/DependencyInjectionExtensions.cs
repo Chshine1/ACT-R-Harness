@@ -20,7 +20,6 @@ public static class DependencyInjectionExtensions
 
             services.AddSingleton<DeclarativeMemoryModule>();
             services.AddSingleton<IntentionModule>();
-            services.AddSingleton<PerceptionMotorModule>();
 
             services.AddSingleton<IModuleRegistry, ModuleRegistry>(sp =>
             {
@@ -28,10 +27,6 @@ public static class DependencyInjectionExtensions
 
                 registry.RegisterModule(sp.GetRequiredService<DeclarativeMemoryModule>());
                 registry.RegisterModule(sp.GetRequiredService<IntentionModule>());
-
-                var perceptionMotor = sp.GetRequiredService<PerceptionMotorModule>();
-                registry.RegisterModule(perceptionMotor);
-                registry.RegisterRewardProvider(perceptionMotor);
 
                 return registry;
             });

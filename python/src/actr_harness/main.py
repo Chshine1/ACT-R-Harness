@@ -3,9 +3,8 @@ import logging
 import os
 from grpclib.server import Server
 from grpclib.utils import graceful_exit
-from .services.frostpunk_game import FrostpunkGame
 from .services.declarative_memory import DeclarativeMemory
-from .services.neuro_core import NeuroCore
+from .services.neuro_core.neuro_core import NeuroCore
 from .services.procedural_memory import ProceduralMemory
 
 
@@ -17,7 +16,6 @@ async def main():
     server = Server([
         DeclarativeMemory(),
         NeuroCore(),
-        FrostpunkGame(),
         ProceduralMemory(temperature=temperature, learning_rate=lr),
     ])
 

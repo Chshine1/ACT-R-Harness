@@ -1,15 +1,26 @@
-﻿using Harness.Abstractions;
-using Harness.Abstractions.Reward;
-using Harness.Core.Modules;
+﻿using Harness.Abstractions.Reward;
 
 namespace Harness.Core;
 
-public class HouseholdRewardService(PerceptionMotorModule perceptionModule) : IRewardService
+public record RoomSnapshot
 {
-    public async Task<float> ComputeRewardAsync(CancellationToken cancellationToken = default)
+    public double Temperature { get; init; }
+    public double Humidity { get; init; }
+    public double AirQuality { get; init; }
+}
+
+public record PerceptionRewardState
+{
+    public List<RoomSnapshot> Rooms { get; init; } = [];
+    public double TotalEnergy { get; init; }
+}
+
+public class HouseholdRewardService : IRewardService
+{
+    public Task<float> ComputeRewardAsync(CancellationToken cancellationToken = default)
     {
-        var state = (PerceptionRewardState)await perceptionModule.GetRewardStateAsync(cancellationToken);
-        return ComputeReward(state);
+        var state = new PerceptionRewardState(); //await perceptionModule.GetRewardStateAsync(cancellationToken);
+        return Task.FromResult(ComputeReward(state));
     }
 
     private static float ComputeReward(PerceptionRewardState state)

@@ -3,8 +3,8 @@ import math
 import random
 from betterproto.lib.google.protobuf import Empty
 from dataclasses import dataclass
-from ..generated.grpc.actr import NeuroAction, ProceduralCondition
-from ..generated.grpc.actr.services import ProceduralMemoryBase, GetAllConditionsResponse, SelectRuleRequest, \
+from actr_harness.generated.grpc.actr import NeuroAction, ProceduralCondition
+from actr_harness.generated.grpc.actr.services import ProceduralMemoryBase, GetAllConditionsResponse, SelectRuleRequest, \
     LearnUtilityRequest
 
 

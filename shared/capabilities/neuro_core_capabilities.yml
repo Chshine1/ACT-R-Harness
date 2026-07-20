@@ -1,0 +1,46 @@
+capabilities:
+  - id: fuzzy_decode
+    name: "Fuzzy Command Decoder"
+    description: |
+      Translates partial commands and neural intents into concrete operations
+      using the provided module schemas and buffer contents.
+    tags: ["decoding", "action"]
+
+    data_schema:
+      - name: buffers
+        type: array
+        required: true
+        description: >-
+          List of buffer objects, each containing "module_id" and "data" (a dict).
+      - name: schemas
+        type: object
+        required: true
+        description: >-
+          Mapping from module_id to its command definitions. Each definition has a
+          dict of commands, each with "params" array.
+      - name: partial_commands
+        type: array
+        required: false
+        description: >-
+          List of partially filled commands to complete. Each has "target_module_id",
+          "command", "existing_params", and optionally "semantic_params".
+      - name: neural_intents
+        type: array
+        required: false
+        description: >-
+          List of high-level intent objects, e.g. {"intent": "summarize_recent"}.
+
+    instructions:
+      static: |
+        - Translate partial commands and neural intents into a concrete operation sequence.
+        - Each operation must use a valid "module_id" from the "schemas" in the input, a command name defined there, and parameters whose types match those defined in the command's params.
+        - Replace natural-language descriptions or placeholder values with concrete data inferred from "buffers" or intents.
+
+    examples: []
+
+    output_format:
+      type: json_array
+      description: "A single valid JSON array of operations."
+      extra_notes:
+        - "Each element must be an object with 'module_id', 'command', 'params'."
+        - "Do not wrap the array in a markdown code block."

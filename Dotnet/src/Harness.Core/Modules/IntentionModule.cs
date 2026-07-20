@@ -4,39 +4,21 @@ using Harness.Abstractions.Modules;
 
 namespace Harness.Core.Modules;
 
-[ModuleCommandRequest(
-    """
-    {
-        "id": "string",
-        "slots": { "type": "object" }
-    }
-    """)]
+[ModuleCommandRequest("""{"id": "string", "slots": { "type": "object" }}""")]
 public record SetGoalRequest(string Id, Struct Slots) : IStructRepresentable<SetGoalRequest>
 {
     public Struct ToStruct() => new() { Fields = { ["id"] = Value.ForString(Id), ["slots"] = Value.ForStruct(Slots) } };
     public static SetGoalRequest FromStruct(Struct s) => new(s.Fields["id"].StringValue, s.Fields["slots"].StructValue);
 }
 
-[ModuleCommandRequest(
-    """
-    {
-        "id": "string",
-        "slots": { "type": "object" }
-    }
-    """)]
+[ModuleCommandRequest("""{"id": "string", "slots": { "type": "object" }}""")]
 public record PushSubgoalRequest(string Id, Struct Slots) : IStructRepresentable<PushSubgoalRequest>
 {
     public Struct ToStruct() => new() { Fields = { ["id"] = Value.ForString(Id), ["slots"] = Value.ForStruct(Slots) } };
     public static PushSubgoalRequest FromStruct(Struct s) => new(s.Fields["id"].StringValue, s.Fields["slots"].StructValue);
 }
 
-[ModuleCommandRequest(
-    """
-    {
-        "slot": "string",
-        "slot_value": "object"
-    }
-    """)]
+[ModuleCommandRequest("""{"slot": "string", "slot_value": "object"}""")]
 public record ModifySlotRequest(string Slot, Struct SlotValue) : IStructRepresentable<ModifySlotRequest>
 {
     public Struct ToStruct() => new() { Fields = { ["slot"] = Value.ForString(Slot), ["slot_value"] = Value.ForStruct(SlotValue) } };

@@ -3,7 +3,7 @@ import sys
 from pathlib import Path
 
 PROTO_DIR = Path("../shared/proto")
-OUT_DIR = Path("./src/generated/grpc")
+OUT_DIR = Path("./src/actr_harness/generated/grpc")
 
 
 def ensure_dir(path: Path) -> None:
