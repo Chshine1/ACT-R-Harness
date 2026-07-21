@@ -1,5 +1,7 @@
 # ACT-R Harness: A Neuro-Symbolic Agent Middleware
 
+> Current implementation status and the near-term demo plan are tracked in [docs/project-overview-and-roadmap.md](docs/project-overview-and-roadmap.md).
+
 ## 1. System Description
 
 The ACT‑R Harness is a hybrid agent framework that couples a procedural rule engine with modular, stateful buffers and

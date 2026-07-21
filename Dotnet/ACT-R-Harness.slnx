@@ -1,6 +1,7 @@
 <Solution>
     <Folder Name="/docs/">
         <File Path="../docs/action-representation.md" />
+        <File Path="../docs/project-overview-and-roadmap.md" />
     </Folder>
     <Folder Name="/ProjectItems/">
         <File Path="../ruleset.yml" />

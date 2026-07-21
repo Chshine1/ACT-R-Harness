@@ -7,6 +7,14 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Harness.Core.Extensions;
 
+public class MockRewardService : IRewardService
+{
+    public Task<float> ComputeRewardAsync(CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult(0f);
+    }
+}
+
 [UsedImplicitly(ImplicitUseKindFlags.Access, ImplicitUseTargetFlags.Members)]
 public static class DependencyInjectionExtensions
 {
@@ -14,7 +22,7 @@ public static class DependencyInjectionExtensions
     {
         public IServiceCollection AddHarnessCore()
         {
-            services.AddSingleton<IRewardService, HouseholdRewardService>();
+            services.AddSingleton<IRewardService, MockRewardService>();
 
             services.AddSingleton<IClock, StepClock>();
 
