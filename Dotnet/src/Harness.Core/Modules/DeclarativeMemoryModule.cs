@@ -9,8 +9,10 @@ namespace Harness.Core.Modules;
 [ModuleCommandRequest(
     """
     {
-        "type": "object",
-        "additionalProperties": { "type": "string" }
+        "cue": {
+            "type": "object",
+            "additionalProperties": { "type": "string" }
+        }
     }
     """)]
 public record RetrieveChunkRequest(Struct Cue) : IStructRepresentable<RetrieveChunkRequest>
@@ -43,6 +45,7 @@ public class DeclarativeMemoryModule : ModuleBase
     private readonly DeclarativeMemory.DeclarativeMemoryClient _client;
     private readonly IModuleRegistry _moduleRegistry;
     private MemoryChunk? _lastRetrieved;
+    private readonly HashSet<string> _knownSlotKeys = [];
 
     public DeclarativeMemoryModule(
         DeclarativeMemory.DeclarativeMemoryClient client,
@@ -82,6 +85,8 @@ public class DeclarativeMemoryModule : ModuleBase
             data.Fields["retrieved_chunk"] = Value.ForNull();
         }
 
+        data.Fields["available_slot_keys"] = Value.ForList(_knownSlotKeys.Select(Value.ForString).ToArray());
+
         return new BufferState
         {
             ModuleId = ModuleId,
@@ -97,8 +102,12 @@ public class DeclarativeMemoryModule : ModuleBase
             Id = request.Id,
             CreationTime = Now()
         };
+
         foreach (var slot in request.Slots.Fields)
+        {
             chunk.Slots.Add(slot.Key, slot.Value.StringValue);
+            _knownSlotKeys.Add(slot.Key);
+        }
 
         _client.AddChunk(new Harness.Abstractions.Actr.Services.AddChunkRequest { Chunk = chunk });
     }

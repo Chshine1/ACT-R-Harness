@@ -151,12 +151,13 @@ class ActionResolver:
         }
 
         system_prompt = (
-            "You are given already determined operations (must be kept) and a set of "
-            "incomplete commands with semantic descriptions and optional meta policies. "
-            "Produce a final sequence of concrete operations by resolving semantics, "
-            "applying meta policies (e.g., skip_if_missing), and merging or splitting as needed. "
-            "Return ONLY a JSON array of operations, each with keys: "
-            "target_module_id, command, params (object with concrete values). "
+            "You are given already determined operations (do NOT include them in your output) "
+            "and a set of incomplete semantic commands with parameters described in natural language. "
+            "For each semantic command, resolve it into zero or more concrete operations according to "
+            "its semantic description and any meta policies (e.g., skip if required sources are missing). "
+            "Return ONLY the operations derived from the semantic commands (the already determined ones "
+            "will be kept automatically). "
+            "Output a strict JSON array of objects with keys: target_module_id, command, params. "
             "No extra text."
         )
 

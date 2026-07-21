@@ -3,3 +3,5 @@
 !.pixi/config.toml
 
 src/actr_harness/generated
+
+tests/cassettes

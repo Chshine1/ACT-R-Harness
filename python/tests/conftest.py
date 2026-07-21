@@ -80,6 +80,7 @@ def runtime_snapshot_factory() -> Callable[..., tuple[list[BufferState], list[Mo
         }
         memory_buffer: dict[str, Any] = {
             "retrieved_chunk": retrieved_chunk,
+            "available_slot_keys": ["keywords", "file_path", "module"]
         }
         file_buffer: dict[str, Any] = {
             "current_path": str(repo_root),
@@ -121,8 +122,10 @@ def runtime_snapshot_factory() -> Callable[..., tuple[list[BufferState], list[Mo
         memory_schema = {
             "retrieve_chunk": (
                 '{\n'
-                '    "type": "object",\n'
-                '    "additionalProperties": { "type": "string" }\n'
+                '    "cue": {\n'
+                '        "type": "object",\n'
+                '        "additionalProperties": { "type": "string" }\n'
+                '    }'
                 '}'
             ),
             "add_chunk": (

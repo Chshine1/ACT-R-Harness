@@ -21,9 +21,11 @@ rules:
         "command:retrieveMemory":
           sources:
             - "intention.current_goal.slots.query"
+            - "declarative_memory.available_slot_keys"
           params:
-            query: "Use the current goal query as the retrieval query."
-            keywords: "Extract lowercase keywords from the retrieval query as a single string cue."
+            cue: >
+              Construct a cue object. Choose keys from the available slot keys of declarative memory
+              (if present in the buffer state) that best match the current goal query.
 
   - id: "rule-memory-hit"
     description: "A relevant memory was retrieved; use it to set attention tags and directly open the file if a path is known."
@@ -50,21 +52,20 @@ rules:
           params:
             slot: "status"
             slot_value: "file_opened"
-        # Optionally add a slot for current file
       semantics:
         "command:setTags":
           sources:
             - "declarative_memory.retrieved_chunk.slots.keywords"
           params:
-            tags: "Split and normalize the retrieved keywords into lowercase tags."
+            tags: "Split and normalize the retrieved keywords into lowercase tags. If the source `keywords` is missing, set an empty list"
         "command:openFileIfPath":
           sources:
             - "declarative_memory.retrieved_chunk.slots.file_path"
           params:
             file_path: "Use the retrieved file path when one is available."
-        "meta:skipCommandIfParamsMissing":
+        "meta:skip_if_missing":
           command: "openFileIfPath"
-          skip_if_missing: true
+          instruction: "ONLY apply this skip rule to the command `openFileIfPath`. If the source `file_path` is missing or None, you MUST NOT generate any operation for this command"
 
   - id: "rule-memory-miss"
     description: "No memory found; push a subgoal to explore the file system for the relevant code."
@@ -90,15 +91,6 @@ rules:
               parent_goal_id: "${intention.current_goal.slots.id}"
               query: "${intention.current_goal.slots.query}"
               status: "exploring"
-      semantics:
-        "command:pushSubgoal":
-          sources:
-            - "intention.current_goal"
-          params:
-            slots:
-              parent_goal_id: "Use the current goal id as the parent goal id."
-              query: "Use the current goal query as the subgoal query."
-              status: "Set the new subgoal status to exploring."
 
 # Following ones are not reviewed yet
 #  - id: "rule-open-best-file"
