@@ -244,3 +244,159 @@ def test_load_rules_raises_value_error_for_invalid_required_fields(tmp_path: Pat
 
         with pytest.raises(ValueError, match=message):
             load_rules(ruleset_path)
+
+
+def test_load_rules_rejects_malformed_yaml_with_ruleset_path(tmp_path: Path):
+    ruleset_path = tmp_path / "malformed.yml"
+    ruleset_path.write_text("rules: [\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Failed to parse ruleset") as error:
+        load_rules(ruleset_path)
+
+    assert str(ruleset_path) in str(error.value)
+
+
+def test_load_rules_rejects_duplicate_rule_ids(tmp_path: Path):
+    ruleset_path = tmp_path / "duplicate.yml"
+    ruleset_path.write_text(
+        "rules:\n"
+        "  - id: duplicate-rule\n"
+        "    condition:\n"
+        "      symbolic: {}\n"
+        "    action:\n"
+        "      commands: {}\n"
+        "  - id: duplicate-rule\n"
+        "    condition:\n"
+        "      symbolic: {}\n"
+        "    action:\n"
+        "      commands: {}\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="Duplicate rule id: duplicate-rule"):
+        load_rules(ruleset_path)
+
+
+def test_load_rules_rejects_malformed_nested_command_payloads(tmp_path: Path):
+    invalid_cases = [
+        (
+            "commands:\n"
+            "        retrieve: invalid\n",
+            "Command 'retrieve' must be a mapping",
+        ),
+        (
+            "commands:\n"
+            "        retrieve:\n"
+            "          command: retrieve_chunk\n",
+            "Command 'retrieve' is missing 'target_module_id'",
+        ),
+        (
+            "commands:\n"
+            "        retrieve:\n"
+            "          target_module_id: memory\n",
+            "Command 'retrieve' is missing 'command'",
+        ),
+        (
+            "commands:\n"
+            "        retrieve:\n"
+            "          target_module_id: 1\n"
+            "          command: retrieve_chunk\n",
+            "Command 'retrieve' has invalid 'target_module_id'",
+        ),
+        (
+            "commands:\n"
+            "        retrieve:\n"
+            "          target_module_id: memory\n"
+            "          command: 1\n",
+            "Command 'retrieve' has invalid 'command'",
+        ),
+        (
+            "commands:\n"
+            "        retrieve:\n"
+            "          target_module_id: memory\n"
+            "          command: retrieve_chunk\n"
+            "          params: []\n",
+            "Command 'retrieve' has invalid 'params'",
+        ),
+    ]
+
+    for index, (commands, message) in enumerate(invalid_cases):
+        ruleset_path = tmp_path / f"invalid-command-{index}.yml"
+        ruleset_path.write_text(
+            "rules:\n"
+            "  - id: command-rule\n"
+            "    condition:\n"
+            "      symbolic: {}\n"
+            "    action:\n"
+            f"      {commands}",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(ValueError, match=message):
+            load_rules(ruleset_path)
+
+
+def test_load_rules_rejects_malformed_semantic_payloads(tmp_path: Path):
+    invalid_cases = [
+        (
+            "      semantics: []\n"
+            "    action:\n"
+            "      commands: {}\n",
+            "condition.semantics must be a mapping",
+        ),
+        (
+            "    action:\n"
+            "      commands: {}\n"
+            "      semantics: []\n",
+            "action.semantics must be a mapping",
+        ),
+        (
+            "    action:\n"
+            "      commands: {}\n"
+            "      semantics:\n"
+            "        meta: []\n",
+            "Semantic entry 'meta' must be a mapping",
+        ),
+    ]
+
+    for index, (semantic_payload, message) in enumerate(invalid_cases):
+        ruleset_path = tmp_path / f"invalid-semantics-{index}.yml"
+        ruleset_path.write_text(
+            "rules:\n"
+            "  - id: semantic-rule\n"
+            "    condition:\n"
+            "      symbolic: {}\n"
+            f"{semantic_payload}",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(ValueError, match=message):
+            load_rules(ruleset_path)
+
+
+def test_load_rules_explicit_path_takes_precedence_over_environment(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    explicit_path = tmp_path / "explicit.yml"
+    override_path = tmp_path / "override.yml"
+    explicit_path.write_text(
+        "rules:\n"
+        "  - id: explicit-rule\n"
+        "    condition:\n"
+        "      symbolic: {}\n"
+        "    action:\n"
+        "      commands: {}\n",
+        encoding="utf-8",
+    )
+    override_path.write_text("rules: []\n", encoding="utf-8")
+    monkeypatch.setenv(ENV_RULESET_PATH, str(override_path))
+
+    assert set(load_rules(explicit_path)) == {"explicit-rule"}
+
+
+def test_resolve_ruleset_path_falls_back_to_default_when_environment_unset(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.delenv(ENV_RULESET_PATH, raising=False)
+
+    assert resolve_ruleset_path() == DEFAULT_RULESET_PATH
