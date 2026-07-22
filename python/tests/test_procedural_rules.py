@@ -22,6 +22,19 @@ def test_rule_init_maps_condition_and_commands():
         "value": "start",
     }
     assert rule.condition.semantics.to_dict() == {}
+    assert rule.action.semantics["command:retrieveMemory"].to_dict() == {
+        "sources": [
+            "intention.current_goal.slots.query",
+            "declarative_memory.available_slot_keys",
+        ],
+        "params": {
+            "cue": (
+                "Construct a cue object. Choose keys from the available slot keys "
+                "of declarative memory (if present in the buffer state) that best "
+                "match the current goal query.\n"
+            )
+        },
+    }
     assert set(rule.action.commands) == {"retrieveMemory", "updateStatus"}
     assert (
         rule.action.commands["retrieveMemory"].target_module_id
@@ -55,6 +68,7 @@ def test_rule_memory_hit_preserves_commands_and_semantics():
         ],
     }
     assert set(rule.action.commands) == {"setTags", "openFileIfPath", "updateStatus"}
+    assert rule.action.commands["setTags"].target_module_id == "file_explorer"
     assert rule.action.commands["setTags"].command == "set_attention_tags"
     assert rule.action.commands["openFileIfPath"].command == "open_file"
     assert rule.action.commands["openFileIfPath"].target_module_id == "code_viewport"
@@ -70,6 +84,12 @@ def test_rule_memory_hit_preserves_commands_and_semantics():
                 "Split and normalize the retrieved keywords into lowercase tags. "
                 "If the source `keywords` is missing, set an empty list"
             )
+        },
+    }
+    assert rule.action.semantics["command:openFileIfPath"].to_dict() == {
+        "sources": ["declarative_memory.retrieved_chunk.slots.file_path"],
+        "params": {
+            "file_path": "Use the retrieved file path when one is available."
         },
     }
     assert rule.action.semantics["meta:skip_if_missing"].to_dict() == {
