@@ -1,36 +1,48 @@
 import math
-
 import random
+
 from betterproto.lib.google.protobuf import Empty
-from dataclasses import dataclass
-from actr_harness.generated.grpc.actr import NeuroAction, ProceduralCondition
-from actr_harness.generated.grpc.actr.services import ProceduralMemoryBase, GetAllConditionsResponse, SelectRuleRequest, \
-    LearnUtilityRequest
 
-
-@dataclass
-class Rule:
-    id: str
-    condition: ProceduralCondition
-    action: NeuroAction
-    utility: float
+from actr_harness.generated.grpc.actr import NeuroAction
+from actr_harness.generated.grpc.actr.services import (
+    GetAllConditionsResponse,
+    LearnUtilityRequest,
+    ProceduralMemoryBase,
+    SelectRuleRequest,
+)
+from actr_harness.services.procedural_rules import Rule, load_rules
 
 
 class ProceduralMemory(ProceduralMemoryBase):
-    def __init__(self, temperature: float = 0.5, learning_rate: float = 0.1):
-        self.rules: dict[str, Rule] = {}
+    def __init__(
+        self,
+        *,
+        rules: dict[str, Rule] | None = None,
+        temperature: float = 0.5,
+        learning_rate: float = 0.1,
+    ) -> None:
+        self.rules = dict(rules) if rules is not None else load_rules()
         self.temperature = temperature
         self.lr = learning_rate
 
-    async def get_all_conditions(self, betterproto_lib_google_protobuf_empty) -> GetAllConditionsResponse:
+    async def get_all_conditions(
+        self,
+        betterproto_lib_google_protobuf_empty: Empty,
+    ) -> GetAllConditionsResponse:
         _ = betterproto_lib_google_protobuf_empty
 
-        return GetAllConditionsResponse(conditions=[r.condition for r in self.rules.values()])
+        return GetAllConditionsResponse(
+            conditions=[rule.condition for rule in self.rules.values()]
+        )
 
     async def select_rule(self, select_rule_request: SelectRuleRequest) -> NeuroAction:
         _ = select_rule_request
 
-        applicable = [r for r in self.rules.values() if (r.id in select_rule_request.satisfied_rule_ids)]
+        applicable = [
+            rule
+            for rule in self.rules.values()
+            if rule.id in select_rule_request.satisfied_rule_ids
+        ]
         if not applicable:
             raise ValueError("No applicable rule found.")
 
