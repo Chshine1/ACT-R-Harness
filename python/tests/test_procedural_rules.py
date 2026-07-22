@@ -1,7 +1,12 @@
+from pathlib import Path
+
+import pytest
+
 from actr_harness.services.procedural_rules import (
     DEFAULT_RULESET_PATH,
     INITIAL_RULE_UTILITY,
     load_rules,
+    resolve_ruleset_path,
 )
 
 
@@ -132,3 +137,62 @@ def test_rule_memory_miss_maps_push_subgoal_params():
             "status": "exploring",
         },
     }
+
+
+def test_resolve_ruleset_path_prefers_environment_override(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    override_path = tmp_path / "override.yml"
+    monkeypatch.setenv("ACTR_RULESET_PATH", str(override_path))
+
+    assert resolve_ruleset_path() == override_path.resolve()
+
+
+def test_load_rules_uses_environment_override_without_explicit_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    override_path = tmp_path / "override.yml"
+    override_path.write_text(
+        "rules:\n"
+        "  - id: override-rule\n"
+        "    condition:\n"
+        "      symbolic: {type: equals}\n"
+        "    action:\n"
+        "      commands: {}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ACTR_RULESET_PATH", str(override_path))
+
+    assert set(load_rules()) == {"override-rule"}
+
+
+def test_load_rules_raises_file_not_found_for_missing_ruleset(tmp_path: Path):
+    missing_path = tmp_path / "missing.yml"
+
+    with pytest.raises(FileNotFoundError, match="Ruleset file does not exist"):
+        load_rules(missing_path)
+
+
+def test_load_rules_raises_value_error_when_rules_list_is_missing(tmp_path: Path):
+    ruleset_path = tmp_path / "invalid.yml"
+    ruleset_path.write_text("name: invalid\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="top-level 'rules' must be a list"):
+        load_rules(ruleset_path)
+
+
+def test_load_rules_raises_value_error_when_action_commands_are_missing(
+    tmp_path: Path,
+):
+    ruleset_path = tmp_path / "invalid.yml"
+    ruleset_path.write_text(
+        "rules:\n"
+        "  - id: invalid-rule\n"
+        "    condition:\n"
+        "      symbolic: {type: equals}\n"
+        "    action: {}\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match=r"missing 'action\.commands'"):
+        load_rules(ruleset_path)
