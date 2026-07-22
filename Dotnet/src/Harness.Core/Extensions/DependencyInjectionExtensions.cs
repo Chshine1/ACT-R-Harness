@@ -1,6 +1,8 @@
-﻿using Harness.Abstractions;
+using Harness.Abstractions;
 using Harness.Abstractions.Modules;
 using Harness.Abstractions.Reward;
+using Harness.Codebase.Modules;
+using Harness.Core.Embeddings;
 using Harness.Core.Modules;
 using JetBrains.Annotations;
 using Microsoft.Extensions.DependencyInjection;
@@ -23,18 +25,27 @@ public static class DependencyInjectionExtensions
         public IServiceCollection AddHarnessCore()
         {
             services.AddSingleton<IRewardService, MockRewardService>();
+            services.AddSingleton<IEmbeddingService, DeterministicEmbeddingService>();
 
             services.AddSingleton<IClock, StepClock>();
 
-            services.AddSingleton<DeclarativeMemoryModule>();
+            services.AddSingleton<ModuleRegistry>();
+            services.AddSingleton<DeclarativeMemoryModule>(sp => new DeclarativeMemoryModule(
+                sp.GetRequiredService<Harness.Abstractions.Actr.Services.DeclarativeMemory.DeclarativeMemoryClient>(),
+                sp.GetRequiredService<IClock>(),
+                sp.GetRequiredService<ModuleRegistry>()));
             services.AddSingleton<IntentionModule>();
+            services.AddSingleton<FileExplorerModule>();
+            services.AddSingleton<CodeViewportModule>();
 
-            services.AddSingleton<IModuleRegistry, ModuleRegistry>(sp =>
+            services.AddSingleton<IModuleRegistry>(sp =>
             {
-                var registry = new ModuleRegistry();
+                var registry = sp.GetRequiredService<ModuleRegistry>();
 
                 registry.RegisterModule(sp.GetRequiredService<DeclarativeMemoryModule>());
                 registry.RegisterModule(sp.GetRequiredService<IntentionModule>());
+                registry.RegisterModule(sp.GetRequiredService<FileExplorerModule>());
+                registry.RegisterModule(sp.GetRequiredService<CodeViewportModule>());
 
                 return registry;
             });

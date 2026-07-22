@@ -19,6 +19,7 @@
 
     <ItemGroup>
         <ProjectReference Include="..\Harness.Abstractions\Harness.Abstractions.csproj"/>
+        <ProjectReference Include="..\Harness.Codebase\Harness.Codebase.csproj"/>
     </ItemGroup>
 
 </Project>

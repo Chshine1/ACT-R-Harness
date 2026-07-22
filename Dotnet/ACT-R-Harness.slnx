@@ -22,4 +22,7 @@
         <Project Path="src/Harness.Host/Harness.Host.csproj" />
         <Project Path="src/Harness.Shared/Harness.Shared.csproj" />
     </Folder>
+    <Folder Name="/tests/">
+        <Project Path="tests/Harness.Core.Tests/Harness.Core.Tests.csproj" />
+    </Folder>
 </Solution>

@@ -29,12 +29,6 @@ public class Program
                 services.AddSingleton(sp =>
                 {
                     var opts = sp.GetRequiredService<IOptions<GrpcClientsOptions>>().Value;
-                    var channel = GrpcChannel.ForAddress(opts.FrostpunkWorldAddress);
-                    return new FrostpunkWorld.FrostpunkWorldClient(channel);
-                });
-                services.AddSingleton(sp =>
-                {
-                    var opts = sp.GetRequiredService<IOptions<GrpcClientsOptions>>().Value;
                     var channel = GrpcChannel.ForAddress(opts.ProceduralMemoryAddress);
                     return new ProceduralMemory.ProceduralMemoryClient(channel);
                 });
