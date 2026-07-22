@@ -23,8 +23,12 @@ def test_rule_init_maps_condition_and_commands():
     }
     assert rule.condition.semantics.to_dict() == {}
     assert set(rule.action.commands) == {"retrieveMemory", "updateStatus"}
-    assert rule.action.commands["retrieveMemory"].target_module_id == "declarative_memory"
+    assert (
+        rule.action.commands["retrieveMemory"].target_module_id
+        == "declarative_memory"
+    )
     assert rule.action.commands["retrieveMemory"].command == "retrieve_chunk"
+    assert rule.action.commands["retrieveMemory"].params.to_dict() == {}
     assert rule.action.commands["updateStatus"].target_module_id == "intention"
     assert rule.action.commands["updateStatus"].command == "modify_slot"
     assert rule.action.commands["updateStatus"].params.to_dict() == {
@@ -39,6 +43,8 @@ def test_rule_memory_hit_preserves_commands_and_semantics():
     assert set(rule.action.commands) == {"setTags", "openFileIfPath", "updateStatus"}
     assert rule.action.commands["setTags"].command == "set_attention_tags"
     assert rule.action.commands["openFileIfPath"].command == "open_file"
+    assert rule.action.commands["openFileIfPath"].target_module_id == "code_viewport"
+    assert rule.action.commands["openFileIfPath"].params.to_dict() == {}
     assert rule.action.commands["updateStatus"].params.to_dict() == {
         "slot": "status",
         "slot_value": "file_opened",

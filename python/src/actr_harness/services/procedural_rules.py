@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import NotRequired, TypedDict, cast
 
 import yaml
 from betterproto.lib.google.protobuf import Struct
@@ -11,8 +11,36 @@ from actr_harness.generated.grpc.actr import (
     ProceduralCondition,
 )
 
-DEFAULT_RULESET_PATH = Path(__file__).resolve().parents[4] / "shared" / "ruleset" / "lab.yml"
+DEFAULT_RULESET_PATH = (
+    Path(__file__).resolve().parents[4] / "shared" / "ruleset" / "lab.yml"
+)
 INITIAL_RULE_UTILITY = 0.0
+
+
+class CommandData(TypedDict):
+    target_module_id: str
+    command: str
+    params: NotRequired[dict[str, object]]
+
+
+class ConditionData(TypedDict):
+    symbolic: dict[str, object]
+    semantics: NotRequired[dict[str, object]]
+
+
+class ActionData(TypedDict):
+    commands: NotRequired[dict[str, CommandData]]
+    semantics: NotRequired[dict[str, dict[str, object]]]
+
+
+class RuleData(TypedDict):
+    id: str
+    condition: ConditionData
+    action: ActionData
+
+
+class Ruleset(TypedDict):
+    rules: list[RuleData]
 
 
 @dataclass(slots=True)
@@ -20,12 +48,12 @@ class Rule:
     id: str
     condition: ProceduralCondition
     action: NeuroAction
-    utility: float
+    utility: float = INITIAL_RULE_UTILITY
 
 
 def load_rules(path: Path) -> dict[str, Rule]:
     with path.open(encoding="utf-8") as rules_file:
-        ruleset: dict[str, Any] = yaml.safe_load(rules_file)
+        ruleset = cast(Ruleset, yaml.safe_load(rules_file))
 
     rules: dict[str, Rule] = {}
     for rule_data in ruleset["rules"]:
