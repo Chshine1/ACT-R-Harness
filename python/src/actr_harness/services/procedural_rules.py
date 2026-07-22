@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import NotRequired, TypedDict, cast
 
-import yaml
+import yaml  # type: ignore[import-untyped]
 from betterproto.lib.google.protobuf import Struct
 
 from actr_harness.generated.grpc.actr import (
@@ -51,9 +51,13 @@ class Rule:
     utility: float = INITIAL_RULE_UTILITY
 
 
+def _struct_from_dict(data: dict[str, object]) -> Struct:
+    return Struct.from_dict(data)  # type: ignore[misc, no-any-return]
+
+
 def load_rules(path: Path) -> dict[str, Rule]:
     with path.open(encoding="utf-8") as rules_file:
-        ruleset = cast(Ruleset, yaml.safe_load(rules_file))
+        ruleset = cast("Ruleset", yaml.safe_load(rules_file))  # type: ignore[misc]
 
     rules: dict[str, Rule] = {}
     for rule_data in ruleset["rules"]:
@@ -63,19 +67,19 @@ def load_rules(path: Path) -> dict[str, Rule]:
 
         condition = ProceduralCondition(
             rule_id=rule_id,
-            condition=Struct.from_dict(condition_data["symbolic"]),
-            semantics=Struct.from_dict(condition_data.get("semantics", {})),
+            condition=_struct_from_dict(condition_data["symbolic"]),
+            semantics=_struct_from_dict(condition_data.get("semantics", {})),
         )
         commands = {
             name: BufferOperation(
                 target_module_id=command_data["target_module_id"],
                 command=command_data["command"],
-                params=Struct.from_dict(command_data.get("params", {})),
+                params=_struct_from_dict(command_data.get("params", {})),
             )
             for name, command_data in action_data.get("commands", {}).items()
         }
         semantics = {
-            name: Struct.from_dict(semantic_data)
+            name: _struct_from_dict(semantic_data)
             for name, semantic_data in action_data.get("semantics", {}).items()
         }
         rules[rule_id] = Rule(
