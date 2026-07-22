@@ -40,6 +40,20 @@ def test_rule_init_maps_condition_and_commands():
 def test_rule_memory_hit_preserves_commands_and_semantics():
     rule = load_rules(DEFAULT_RULESET_PATH)["rule-memory-hit"]
 
+    assert rule.condition.condition.to_dict() == {
+        "type": "and",
+        "conditions": [
+            {
+                "type": "equals",
+                "slot": "intention.current_goal.slots.status",
+                "value": "memory_queried",
+            },
+            {
+                "type": "exist",
+                "slot": "declarative_memory.retrieved_chunk",
+            },
+        ],
+    }
     assert set(rule.action.commands) == {"setTags", "openFileIfPath", "updateStatus"}
     assert rule.action.commands["setTags"].command == "set_attention_tags"
     assert rule.action.commands["openFileIfPath"].command == "open_file"
@@ -71,6 +85,25 @@ def test_rule_memory_hit_preserves_commands_and_semantics():
 def test_rule_memory_miss_maps_push_subgoal_params():
     rule = load_rules(DEFAULT_RULESET_PATH)["rule-memory-miss"]
 
+    assert rule.condition.condition.to_dict() == {
+        "type": "and",
+        "conditions": [
+            {
+                "type": "equals",
+                "slot": "intention.current_goal.slots.status",
+                "value": "memory_queried",
+            },
+            {
+                "type": "not",
+                "condition": {
+                    "type": "exist",
+                    "slot": "declarative_memory.retrieved_chunk",
+                },
+            },
+        ],
+    }
+    assert rule.action.commands["pushSubgoal"].target_module_id == "intention"
+    assert rule.action.commands["pushSubgoal"].command == "push_subgoal"
     assert rule.action.commands["pushSubgoal"].params.to_dict() == {
         "id": "ExploreFileSystem",
         "slots": {
