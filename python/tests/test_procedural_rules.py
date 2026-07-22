@@ -4,6 +4,7 @@ import pytest
 
 from actr_harness.services.procedural_rules import (
     DEFAULT_RULESET_PATH,
+    ENV_RULESET_PATH,
     INITIAL_RULE_UTILITY,
     load_rules,
     resolve_ruleset_path,
@@ -143,7 +144,7 @@ def test_resolve_ruleset_path_prefers_environment_override(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
     override_path = tmp_path / "override.yml"
-    monkeypatch.setenv("ACTR_RULESET_PATH", str(override_path))
+    monkeypatch.setenv(ENV_RULESET_PATH, str(override_path))
 
     assert resolve_ruleset_path() == override_path.resolve()
 
@@ -161,7 +162,7 @@ def test_load_rules_uses_environment_override_without_explicit_path(
         "      commands: {}\n",
         encoding="utf-8",
     )
-    monkeypatch.setenv("ACTR_RULESET_PATH", str(override_path))
+    monkeypatch.setenv(ENV_RULESET_PATH, str(override_path))
 
     assert set(load_rules()) == {"override-rule"}
 
@@ -196,3 +197,50 @@ def test_load_rules_raises_value_error_when_action_commands_are_missing(
 
     with pytest.raises(ValueError, match=r"missing 'action\.commands'"):
         load_rules(ruleset_path)
+
+
+def test_load_rules_raises_value_error_for_invalid_required_fields(tmp_path: Path):
+    invalid_cases = [
+        ("- not-a-mapping\n", "top-level payload must be a mapping"),
+        (
+            "rules:\n"
+            "  - condition:\n"
+            "      symbolic: {type: equals}\n"
+            "    action:\n"
+            "      commands: {}\n",
+            "Rule is missing 'id'",
+        ),
+        (
+            "rules:\n"
+            "  - id: ''\n"
+            "    condition:\n"
+            "      symbolic: {type: equals}\n"
+            "    action:\n"
+            "      commands: {}\n",
+            "Rule is missing 'id'",
+        ),
+        (
+            "rules:\n"
+            "  - id: '   '\n"
+            "    condition:\n"
+            "      symbolic: {type: equals}\n"
+            "    action:\n"
+            "      commands: {}\n",
+            "Rule is missing 'id'",
+        ),
+        (
+            "rules:\n"
+            "  - id: invalid-rule\n"
+            "    condition: {}\n"
+            "    action:\n"
+            "      commands: {}\n",
+            "Rule is missing 'condition.symbolic'",
+        ),
+    ]
+
+    for index, (payload, message) in enumerate(invalid_cases):
+        ruleset_path = tmp_path / f"invalid-{index}.yml"
+        ruleset_path.write_text(payload, encoding="utf-8")
+
+        with pytest.raises(ValueError, match=message):
+            load_rules(ruleset_path)

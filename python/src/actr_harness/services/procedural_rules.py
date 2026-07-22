@@ -57,6 +57,12 @@ def _struct_from_dict(data: dict[str, object]) -> Struct:
     return Struct.from_dict(data)  # type: ignore[misc, no-any-return]
 
 
+def _validate_rule_id(value: object) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("Rule is missing 'id'")
+    return value
+
+
 def resolve_ruleset_path() -> Path:
     configured_path = os.environ.get(ENV_RULESET_PATH)
     if configured_path:
@@ -100,9 +106,7 @@ def load_rules(path: Path | None = None) -> dict[str, Rule]:
             raise ValueError("Rule is missing 'action.commands'")
 
         validated_rule_data = cast("RuleData", rule_data)
-        rule_id = validated_rule_data["id"]
-        if not isinstance(rule_id, str):
-            raise ValueError("Rule is missing 'id'")
+        rule_id = _validate_rule_id(validated_rule_data["id"])
 
         condition = ProceduralCondition(
             rule_id=rule_id,
