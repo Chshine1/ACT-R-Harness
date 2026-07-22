@@ -75,6 +75,8 @@ def _validate_command(
 ) -> tuple[str, str, str, dict[str, object]]:
     if not isinstance(name, str):
         raise ValueError("Command name must be a string")
+    if not name.strip():
+        raise ValueError("Command name must not be blank")
     command_data = _require_mapping(value, f"Command '{name}' must be a mapping")
 
     target_module_id = command_data.get("target_module_id")
@@ -108,6 +110,8 @@ def _validate_semantics(
     for name, semantic_value in semantics_data.items():
         if not isinstance(name, str):
             raise ValueError(f"{field_name} entry name must be a string")
+        if not name.strip():
+            raise ValueError(f"{field_name} entry name must not be blank")
         validated[name] = _require_mapping(
             semantic_value, f"Semantic entry '{name}' must be a mapping"
         )
@@ -162,7 +166,7 @@ def _validate_rule(
 def resolve_ruleset_path() -> Path:
     configured_path = os.environ.get(ENV_RULESET_PATH)
     if configured_path:
-        return Path(configured_path).resolve()
+        return Path(configured_path).expanduser().resolve()
     return DEFAULT_RULESET_PATH
 
 

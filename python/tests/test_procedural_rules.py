@@ -400,3 +400,46 @@ def test_resolve_ruleset_path_falls_back_to_default_when_environment_unset(
     monkeypatch.delenv(ENV_RULESET_PATH, raising=False)
 
     assert resolve_ruleset_path() == DEFAULT_RULESET_PATH
+
+
+def test_resolve_ruleset_path_expands_user_home_in_environment_override(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    configured_path = "~/rules.yml"
+    monkeypatch.setenv(ENV_RULESET_PATH, configured_path)
+
+    assert resolve_ruleset_path() == Path(configured_path).expanduser().resolve()
+
+
+def test_load_rules_rejects_blank_command_and_semantic_names(tmp_path: Path):
+    invalid_cases = [
+        (
+            "    action:\n"
+            "      commands:\n"
+            "        '':\n"
+            "          target_module_id: memory\n"
+            "          command: retrieve_chunk\n",
+            "Command name must not be blank",
+        ),
+        (
+            "    action:\n"
+            "      commands: {}\n"
+            "      semantics:\n"
+            "        '   ': {}\n",
+            "action.semantics entry name must not be blank",
+        ),
+    ]
+
+    for index, (payload, message) in enumerate(invalid_cases):
+        ruleset_path = tmp_path / f"invalid-name-{index}.yml"
+        ruleset_path.write_text(
+            "rules:\n"
+            "  - id: invalid-name-rule\n"
+            "    condition:\n"
+            "      symbolic: {}\n"
+            f"{payload}",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(ValueError, match=message):
+            load_rules(ruleset_path)
