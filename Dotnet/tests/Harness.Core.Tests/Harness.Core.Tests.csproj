@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Harness.Core\Harness.Core.csproj" />
+    <ProjectReference Include="..\..\src\Harness.Host\Harness.Host.csproj" />
   </ItemGroup>
 
 </Project>

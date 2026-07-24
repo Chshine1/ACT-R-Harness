@@ -10,4 +10,5 @@ public class HarnessOptions
     public required bool Training { get; init; }
     public required int MaxEpochs { get; init; }
     public required int MaxStepsPerEpoch { get; init; }
+    public required InitialGoalOptions InitialGoal { get; init; }
 }

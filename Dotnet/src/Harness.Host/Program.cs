@@ -40,6 +40,8 @@ public class Program
                 });
 
                 services.AddHarnessCore();
+                services.AddSingleton<InitialGoalSeeder>();
+                services.AddSingleton<HarnessEpochExecutor>();
 
                 services.AddHostedService<HarnessRunner>();
             })
