@@ -10,6 +10,11 @@ public class ModuleRegistry : IModuleRegistry
 
     public void RegisterModule(IModule module)
     {
+        if (_modules.Any(existing => existing.ModuleId == module.ModuleId))
+        {
+            return;
+        }
+
         _modules.Add(module);
     }
 

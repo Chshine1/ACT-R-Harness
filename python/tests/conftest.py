@@ -1,17 +1,19 @@
 from collections.abc import Callable
-
 from pathlib import Path
 from typing import Any
 
-from betterproto.lib.google.protobuf import Struct
 import pytest
-from vcr.config import RecordMode  # type: ignore
 import yaml
+from betterproto.lib.google.protobuf import Struct
+from vcr.config import RecordMode  # type: ignore
 
 from actr_harness.generated.grpc.actr import BufferState, ModuleSchema
+from actr_harness.services.llm_client import LLMClient
 from actr_harness.services.neuro_core.neuro_core import NeuroCore
 
 RULES_PATH = Path(__file__).parent.parent.parent / "shared/ruleset/lab.yml"
+VCR_MODEL = "qwen3.7-max"
+VCR_BASE_URL = "https://ws-tuk35mrnxcc1m1c9.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
 
 
 def load_rules() -> list[dict]:
@@ -38,7 +40,13 @@ def rule_by_id(rules: list[dict]) -> Callable[[str], dict]:
 
 @pytest.fixture(scope="module")
 def real_neuro_core() -> NeuroCore:
-    return NeuroCore()
+    return NeuroCore(
+        llm_client=LLMClient(
+            model=VCR_MODEL,
+            api_key="test-key",
+            base_url=VCR_BASE_URL,
+        )
+    )
 
 
 @pytest.fixture(scope="session")
@@ -107,7 +115,10 @@ def runtime_snapshot_factory() -> Callable[..., tuple[list[BufferState], list[Mo
         }
         buffer_states = [
             BufferState(module_id="intention", data=Struct.from_dict(goal_buffer)),
-            BufferState(module_id="declarative_memory", data=Struct.from_dict(memory_buffer)),
+            BufferState(
+                module_id="declarative_memory",
+                data=Struct.from_dict(memory_buffer),
+            ),
             BufferState(module_id="file_explorer", data=Struct.from_dict(file_buffer)),
             BufferState(module_id="code_viewport", data=Struct.from_dict(code_buffer)),
         ]

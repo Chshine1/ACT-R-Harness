@@ -1,11 +1,18 @@
 import math
-
 import random
-from betterproto.lib.google.protobuf import Empty
 from dataclasses import dataclass
+
+from betterproto.lib.google.protobuf import Empty
+
 from actr_harness.generated.grpc.actr import NeuroAction, ProceduralCondition
-from actr_harness.generated.grpc.actr.services import ProceduralMemoryBase, GetAllConditionsResponse, SelectRuleRequest, \
-    LearnUtilityRequest
+from actr_harness.generated.grpc.actr.services import (
+    GetAllConditionsResponse,
+    LearnUtilityRequest,
+    ProceduralMemoryBase,
+    SelectRuleRequest,
+)
+
+from .rules_loader import load_ruleset
 
 
 @dataclass
@@ -17,12 +24,35 @@ class Rule:
 
 
 class ProceduralMemory(ProceduralMemoryBase):
-    def __init__(self, temperature: float = 0.5, learning_rate: float = 0.1):
-        self.rules: dict[str, Rule] = {}
+    def __init__(
+            self,
+            temperature: float = 0.5,
+            learning_rate: float = 0.1,
+            rules_path: str | None = None,
+            default_utility: float = 0.0,
+            random_seed: int | None = None,
+    ):
+        loaded_rules = load_ruleset(
+            rules_path=rules_path,
+            default_utility=default_utility,
+        )
+        self.rules: dict[str, Rule] = {
+            rule_id: Rule(
+                id=loaded.id,
+                condition=loaded.condition,
+                action=loaded.action,
+                utility=loaded.utility,
+            )
+            for rule_id, loaded in loaded_rules.items()
+        }
         self.temperature = temperature
         self.lr = learning_rate
+        self._rng = random.Random(random_seed)
 
-    async def get_all_conditions(self, betterproto_lib_google_protobuf_empty) -> GetAllConditionsResponse:
+    async def get_all_conditions(
+            self,
+            betterproto_lib_google_protobuf_empty,
+    ) -> GetAllConditionsResponse:
         _ = betterproto_lib_google_protobuf_empty
 
         return GetAllConditionsResponse(conditions=[r.condition for r in self.rules.values()])
@@ -30,9 +60,16 @@ class ProceduralMemory(ProceduralMemoryBase):
     async def select_rule(self, select_rule_request: SelectRuleRequest) -> NeuroAction:
         _ = select_rule_request
 
-        applicable = [r for r in self.rules.values() if (r.id in select_rule_request.satisfied_rule_ids)]
+        applicable = [
+            rule
+            for rule in self.rules.values()
+            if rule.id in select_rule_request.satisfied_rule_ids
+        ]
         if not applicable:
             raise ValueError("No applicable rule found.")
+
+        if self.temperature <= 0:
+            return max(applicable, key=lambda rule: (rule.utility, rule.id)).action
 
         utilities = [r.utility for r in applicable]
         max_u = max(utilities)
@@ -40,7 +77,7 @@ class ProceduralMemory(ProceduralMemoryBase):
         sum_exp = sum(exp_utils)
 
         probs = [e / sum_exp for e in exp_utils]
-        rule = random.choices(applicable, weights=probs, k=1)[0]
+        rule = self._rng.choices(applicable, weights=probs, k=1)[0]
 
         return rule.action
 

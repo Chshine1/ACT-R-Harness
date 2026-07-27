@@ -2,6 +2,31 @@
 
 > Current implementation status and the near-term demo plan are tracked in [docs/project-overview-and-roadmap.md](docs/project-overview-and-roadmap.md).
 
+## Runnable Demo
+
+The minimal runnable slice in this repository is the codebase-navigation demo driven by the three active rules in
+`shared/ruleset/lab.yml`.
+
+Required environment variables:
+
+- `NEURO_LLM_MODEL`
+- `OPENAI_API_KEY`
+- `OPENAI_BASE_URL`
+
+Run the memory-hit scenario:
+
+```bash
+docker compose up --build harness-dotnet
+```
+
+Run the memory-miss scenario:
+
+```bash
+docker compose up --build harness-dotnet-miss
+```
+
+Both runs write artifacts to `./artifacts`, including `trace.jsonl` and `summary.md`.
+
 ## 1. System Description
 
 The ACT‑R Harness is a hybrid agent framework that couples a procedural rule engine with modular, stateful buffers and

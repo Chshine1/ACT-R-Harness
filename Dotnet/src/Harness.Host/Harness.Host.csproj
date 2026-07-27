@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
         <OutputType>Exe</OutputType>
@@ -9,6 +9,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <PackageReference Include="Google.Protobuf" Version="3.35.1"/>
         <PackageReference Include="Grpc.Net.Client" Version="2.80.0"/>
         <PackageReference Include="JetBrains.Annotations" Version="2026.2.0"/>
         <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.10" />

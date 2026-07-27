@@ -27,7 +27,7 @@ typecheck = "pixi run -e dev mypy src tests && pixi run -e dev pyright src tests
 lint = "pixi run -e dev ruff check src tests"
 check = "pixi run typecheck && pixi run lint"
 protos-gen = "pixi run -e dev python tools/generate_protos.py"
-start = "python -m src.main --port 50051"
+start = "python -m actr_harness.main"
 
 [tool.pixi.dependencies]
 python = "3.13.*"

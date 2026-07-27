@@ -43,17 +43,17 @@ public class DeclarativeMemoryModule : ModuleBase
 {
     private const double DefaultDeltaTimeSeconds = 60.0;
     private readonly DeclarativeMemory.DeclarativeMemoryClient _client;
-    private readonly IModuleRegistry _moduleRegistry;
+    private readonly Func<IReadOnlyCollection<IModule>> _moduleProvider;
     private MemoryChunk? _lastRetrieved;
     private readonly HashSet<string> _knownSlotKeys = [];
 
     public DeclarativeMemoryModule(
         DeclarativeMemory.DeclarativeMemoryClient client,
         IClock clock,
-        IModuleRegistry moduleRegistry)
+        Func<IReadOnlyCollection<IModule>> moduleProvider)
     {
         _client = client;
-        _moduleRegistry = moduleRegistry;
+        _moduleProvider = moduleProvider;
         clock.OnTickAsync += OnTickAsync;
     }
 
@@ -128,7 +128,7 @@ public class DeclarativeMemoryModule : ModuleBase
     private async Task OnTickAsync(StepState stepState, CancellationToken cancellationToken)
     {
         var snapshots = new Struct();
-        foreach (var module in _moduleRegistry.GetModules())
+        foreach (var module in _moduleProvider())
         {
             var state = module.GetBufferState();
             snapshots.Fields[state.ModuleId] = Value.ForStruct(state.Data);

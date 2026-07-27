@@ -1,6 +1,7 @@
-﻿using Harness.Abstractions;
+using Harness.Abstractions;
 using Harness.Abstractions.Modules;
 using Harness.Abstractions.Reward;
+using Harness.Codebase.Modules;
 using Harness.Core.Modules;
 using JetBrains.Annotations;
 using Microsoft.Extensions.DependencyInjection;
@@ -23,11 +24,15 @@ public static class DependencyInjectionExtensions
         public IServiceCollection AddHarnessCore()
         {
             services.AddSingleton<IRewardService, MockRewardService>();
-
             services.AddSingleton<IClock, StepClock>();
+            services.AddSingleton<IEmbeddingService, DeterministicEmbeddingService>();
+            services.AddSingleton<Func<IReadOnlyCollection<IModule>>>(sp =>
+                () => sp.GetRequiredService<IModuleRegistry>().GetModules());
 
             services.AddSingleton<DeclarativeMemoryModule>();
             services.AddSingleton<IntentionModule>();
+            services.AddSingleton<FileExplorerModule>();
+            services.AddSingleton<CodeViewportModule>();
 
             services.AddSingleton<IModuleRegistry, ModuleRegistry>(sp =>
             {
@@ -35,6 +40,8 @@ public static class DependencyInjectionExtensions
 
                 registry.RegisterModule(sp.GetRequiredService<DeclarativeMemoryModule>());
                 registry.RegisterModule(sp.GetRequiredService<IntentionModule>());
+                registry.RegisterModule(sp.GetRequiredService<FileExplorerModule>());
+                registry.RegisterModule(sp.GetRequiredService<CodeViewportModule>());
 
                 return registry;
             });

@@ -19,10 +19,10 @@ public record PushSubgoalRequest(string Id, Struct Slots) : IStructRepresentable
 }
 
 [ModuleCommandRequest("""{"slot": "string", "slot_value": "object"}""")]
-public record ModifySlotRequest(string Slot, Struct SlotValue) : IStructRepresentable<ModifySlotRequest>
+public record ModifySlotRequest(string Slot, Value SlotValue) : IStructRepresentable<ModifySlotRequest>
 {
-    public Struct ToStruct() => new() { Fields = { ["slot"] = Value.ForString(Slot), ["slot_value"] = Value.ForStruct(SlotValue) } };
-    public static ModifySlotRequest FromStruct(Struct s) => new(s.Fields["slot"].StringValue, s.Fields["slot_value"].StructValue);
+    public Struct ToStruct() => new() { Fields = { ["slot"] = Value.ForString(Slot), ["slot_value"] = SlotValue } };
+    public static ModifySlotRequest FromStruct(Struct s) => new(s.Fields["slot"].StringValue, s.Fields["slot_value"]);
 }
 
 public class IntentionModule : ModuleBase
@@ -124,7 +124,7 @@ public class IntentionModule : ModuleBase
         if (!_goalStack.TryPeek(out var goal))
             throw new InvalidOperationException("No current goal to modify.");
 
-        goal.Slots[request.Slot] = Value.ForStruct(request.SlotValue);
+        goal.Slots[request.Slot] = request.SlotValue;
     }
 
     private class Goal

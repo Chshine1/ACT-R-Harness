@@ -4,18 +4,72 @@ services:
       context: .
       dockerfile: python/Dockerfile
     environment:
-      - TEMPERATURE=0.5
-      - LEARNING_RATE=0.1
+      TEMPERATURE: "0.0"
+      LEARNING_RATE: "0.1"
+      DECLARATIVE_MEMORY_NOISE_SD: "0.0"
+      DEFAULT_RULE_UTILITY: "0.0"
+      PROCEDURAL_RANDOM_SEED: "7"
+      RULESET_PATH: "/app/shared/ruleset/lab.yml"
+      NEURO_LLM_MODEL: "${NEURO_LLM_MODEL:?Set NEURO_LLM_MODEL}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:?Set OPENAI_API_KEY}"
+      OPENAI_BASE_URL: "${OPENAI_BASE_URL:?Set OPENAI_BASE_URL}"
     ports:
       - "50051:50051"
 
   harness-dotnet:
     build:
-      context: ./dotnet
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: Dotnet/Dockerfile
     depends_on:
       - python-services
     environment:
-      - ASPNETCORE_ENVIRONMENT=Development
+      ASPNETCORE_ENVIRONMENT: Development
+      GrpcClients__DeclarativeMemoryAddress: "http://python-services:50051"
+      GrpcClients__ProceduralMemoryAddress: "http://python-services:50051"
+      GrpcClients__NeuroCoreAddress: "http://python-services:50051"
+      Harness__Training: "false"
+      Harness__MaxEpochs: "1"
+      Harness__MaxStepsPerEpoch: "8"
+      Harness__StartupTimeoutSeconds: "45"
+      Harness__WorkspaceRoot: "/workspace"
+      Harness__ArtifactRoot: "/artifacts"
+      Harness__Scenario__Name: "memory_hit"
+      Harness__Scenario__GoalId: "goal-1"
+      Harness__Scenario__Query: "Find authentication module"
+      Harness__Scenario__GoalStatus: "start"
+      Harness__Scenario__SeedMemoryChunk__Id: "chunk-readme"
+      Harness__Scenario__SeedMemoryChunk__Module: "Find authentication module"
+      Harness__Scenario__SeedMemoryChunk__Keywords: "README documentation authentication module"
+      Harness__Scenario__SeedMemoryChunk__RelativeFilePath: "README.md"
+    volumes:
+      - ./:/workspace:ro
+      - ./artifacts:/artifacts
+    stdin_open: true
+    tty: true
+
+  harness-dotnet-miss:
+    build:
+      context: .
+      dockerfile: Dotnet/Dockerfile
+    depends_on:
+      - python-services
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      GrpcClients__DeclarativeMemoryAddress: "http://python-services:50051"
+      GrpcClients__ProceduralMemoryAddress: "http://python-services:50051"
+      GrpcClients__NeuroCoreAddress: "http://python-services:50051"
+      Harness__Training: "false"
+      Harness__MaxEpochs: "1"
+      Harness__MaxStepsPerEpoch: "8"
+      Harness__StartupTimeoutSeconds: "45"
+      Harness__WorkspaceRoot: "/workspace"
+      Harness__ArtifactRoot: "/artifacts"
+      Harness__Scenario__Name: "memory_miss"
+      Harness__Scenario__GoalId: "goal-1"
+      Harness__Scenario__Query: "Find a module that does not exist"
+      Harness__Scenario__GoalStatus: "start"
+    volumes:
+      - ./:/workspace:ro
+      - ./artifacts:/artifacts
     stdin_open: true
     tty: true

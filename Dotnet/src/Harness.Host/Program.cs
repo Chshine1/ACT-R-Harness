@@ -1,4 +1,4 @@
-﻿using Grpc.Net.Client;
+using Grpc.Net.Client;
 using Harness.Abstractions.Actr.Services;
 using Harness.Core.Extensions;
 using Harness.Host.Options;
@@ -29,12 +29,6 @@ public class Program
                 services.AddSingleton(sp =>
                 {
                     var opts = sp.GetRequiredService<IOptions<GrpcClientsOptions>>().Value;
-                    var channel = GrpcChannel.ForAddress(opts.FrostpunkWorldAddress);
-                    return new FrostpunkWorld.FrostpunkWorldClient(channel);
-                });
-                services.AddSingleton(sp =>
-                {
-                    var opts = sp.GetRequiredService<IOptions<GrpcClientsOptions>>().Value;
                     var channel = GrpcChannel.ForAddress(opts.ProceduralMemoryAddress);
                     return new ProceduralMemory.ProceduralMemoryClient(channel);
                 });
@@ -46,7 +40,8 @@ public class Program
                 });
 
                 services.AddHarnessCore();
-
+                services.AddSingleton<DemoScenarioSeeder>();
+                services.AddSingleton<RunArtifactsWriter>();
                 services.AddHostedService<HarnessRunner>();
             })
             .Build();
