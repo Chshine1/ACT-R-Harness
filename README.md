@@ -27,6 +27,9 @@ docker compose up --build harness-dotnet-miss
 
 Both runs write artifacts to `./artifacts`, including `trace.jsonl` and `summary.md`.
 
+Set `LOG_LEVEL=DEBUG` on the Python service when you want payload-level tracing for condition evaluation, rule
+selection, and action decoding in addition to the host-side step diagnostics.
+
 ## 1. System Description
 
 The ACT‑R Harness is a hybrid agent framework that couples a procedural rule engine with modular, stateful buffers and

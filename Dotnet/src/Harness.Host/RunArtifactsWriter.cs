@@ -48,10 +48,14 @@ public class RunArtifactsWriter(IOptions<HarnessOptions> options)
             step = stepNumber,
             result.StopReason,
             result.IsTerminal,
+            result.FailureStage,
+            result.ErrorType,
             result.ErrorMessage,
+            result.ErrorDetails,
             result.SelectedRuleId,
             result.SatisfiedRuleIds,
             result.Operations,
+            result.Diagnostics,
             bufferStatesBefore = result.BufferStatesBefore,
             bufferStatesAfter = result.BufferStatesAfter
         }, _jsonOptions);
@@ -64,27 +68,55 @@ public class RunArtifactsWriter(IOptions<HarnessOptions> options)
         int totalSteps,
         string stopReason,
         IReadOnlyList<ModuleSnapshot> finalBuffers,
+        StepResult? lastResult,
         CancellationToken cancellationToken)
     {
         var finalBuffersJson = JsonSerializer.Serialize(finalBuffers, new JsonSerializerOptions(_jsonOptions)
         {
             WriteIndented = true
         });
-
-        var content = string.Join(Environment.NewLine, [
+        var lines = new List<string>
+        {
             "# Run Summary",
             string.Empty,
             $"Scenario: `{session.ScenarioName}`",
             $"Epoch: `{session.Epoch}`",
             $"Finished (UTC): `{DateTimeOffset.UtcNow:O}`",
             $"Total steps: `{totalSteps}`",
-            $"Stop reason: `{stopReason}`",
+            $"Stop reason: `{stopReason}`"
+        };
+
+        if (lastResult is not null)
+        {
+            lines.Add($"Last selected rule: `{lastResult.SelectedRuleId ?? "<none>"}`");
+            lines.Add($"Matched rules: `{string.Join(", ", lastResult.SatisfiedRuleIds)}`");
+
+            if (!string.IsNullOrWhiteSpace(lastResult.ErrorMessage))
+            {
+                lines.Add(string.Empty);
+                lines.Add("## Final Error");
+                lines.Add($"Failure stage: `{lastResult.FailureStage ?? "<unknown>"}`");
+                lines.Add($"Error type: `{lastResult.ErrorType ?? "<unknown>"}`");
+                lines.Add($"Message: `{lastResult.ErrorMessage}`");
+
+                if (!string.IsNullOrWhiteSpace(lastResult.ErrorDetails))
+                {
+                    lines.Add("```text");
+                    lines.Add(lastResult.ErrorDetails);
+                    lines.Add("```");
+                }
+            }
+        }
+
+        lines.AddRange([
             string.Empty,
             "## Final Buffers",
             "```json",
             finalBuffersJson,
             "```"
         ]);
+
+        var content = string.Join(Environment.NewLine, lines);
 
         await File.WriteAllTextAsync(session.SummaryPath, content, cancellationToken);
     }

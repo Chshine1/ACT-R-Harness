@@ -1,18 +1,23 @@
+import logging
+from dataclasses import asdict, dataclass, field
+from typing import Any
+
 from actr_harness.generated.grpc.actr import (
     BufferState,
+    BufferOperation,
     ModuleSchema,
     NeuroAction,
-    BufferOperation,
 )
 from actr_harness.generated.grpc.actr.services import (
     DecodeActionResponse,
 )
 
 from actr_harness.utils import dict_to_struct
-from dataclasses import dataclass, field, asdict
-from typing import Any
+
 from .buffers_view import BuffersView
 from ..llm_client import LLMClient
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -37,6 +42,14 @@ class ActionResolver:
             current_states: list[BufferState],
             schemas: list[ModuleSchema],
     ) -> DecodeActionResponse:
+        logger.info(
+            "ActionResolver.decode_action request: rule=%s buffers=%d schemas=%d commands=%d semantics=%d",
+            action_intent.rule_id,
+            len(current_states),
+            len(schemas),
+            len(action_intent.commands),
+            len(action_intent.semantics),
+        )
         view = BuffersView(current_states)
         keyed_schemas: dict[str, dict[str, str]] = {s.module_id: s.command_schemas for s in schemas}
 
@@ -68,7 +81,10 @@ class ActionResolver:
                     base_op.command
                 )
                 if schema is None:
-                    raise ValueError
+                    raise ValueError(
+                        "Missing schema for target_module_id="
+                        f"'{base_op.target_module_id}', command='{base_op.command}', alias='{alias}'."
+                    )
 
                 sources_list: dict[str, Any] = {}
                 param_leaves: dict[str, str] = {}
@@ -129,6 +145,23 @@ class ActionResolver:
             )
             determined_ops.extend(llm_ops)
 
+        logger.info(
+            "ActionResolver.decode_action response: operations=%d semantic_entries=%d neuro_intents=%d",
+            len(determined_ops),
+            len(semantic_entries),
+            len(neuro_intents),
+        )
+        logger.debug(
+            "ActionResolver.decode_action operations=%s",
+            [
+                {
+                    "target_module_id": op.target_module_id,
+                    "command": op.command,
+                    "params": op.params.to_dict(),
+                }
+                for op in determined_ops
+            ],
+        )
         return DecodeActionResponse(operations=determined_ops)
 
     async def _llm_resolve_semantic_commands(
@@ -164,9 +197,17 @@ class ActionResolver:
         response = await self._llm_client.chat_json(prompt_data, system_prompt)
         ops: list[BufferOperation] = []
         if not isinstance(response, list):
+            logger.warning(
+                "Semantic command resolution returned non-list payload of type=%s",
+                type(response).__name__,
+            )
             return ops
         for item in response:
             if not isinstance(item, dict):
+                logger.debug(
+                    "Skipping semantic command item with invalid type=%s",
+                    type(item).__name__,
+                )
                 continue
             try:
                 ops.append(
@@ -201,7 +242,10 @@ class ActionResolver:
             return leaves
         if isinstance(value, str):
             return {prefix: value}
-        raise ValueError
+        raise ValueError(
+            f"Semantic param leaf at '{prefix or '<root>'}' must be a string, "
+            f"got {type(value).__name__}."
+        )
 
     async def _llm_decode_fuzzy(
             self,
@@ -226,6 +270,10 @@ class ActionResolver:
         ops_raw = await self._llm_client.chat_json(prompt_data, system_prompt)
         ops = []
         if not isinstance(ops_raw, list):
+            logger.warning(
+                "Fuzzy decode returned non-list payload of type=%s",
+                type(ops_raw).__name__,
+            )
             return ops
         for item in ops_raw:
             try:
@@ -237,5 +285,6 @@ class ActionResolver:
                     )
                 )
             except (KeyError, TypeError):
+                logger.debug("Skipping fuzzy decode item with invalid shape: %s", item)
                 continue
         return ops

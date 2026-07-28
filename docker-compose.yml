@@ -4,6 +4,7 @@ services:
       context: .
       dockerfile: python/Dockerfile
     environment:
+      LOG_LEVEL: "${LOG_LEVEL:-INFO}"
       TEMPERATURE: "0.0"
       LEARNING_RATE: "0.1"
       DECLARATIVE_MEMORY_NOISE_SD: "0.0"

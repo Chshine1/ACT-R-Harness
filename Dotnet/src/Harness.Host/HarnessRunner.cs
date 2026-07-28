@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Harness.Abstractions;
 using Harness.Abstractions.Reward;
 using Harness.Core;
@@ -21,6 +22,7 @@ public class HarnessRunner(
     : BackgroundService
 {
     private readonly HarnessOptions _options = options.Value;
+    private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web);
 
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
@@ -79,22 +81,18 @@ public class HarnessRunner(
     {
         var stopReason = "max_steps_reached";
         IReadOnlyList<ModuleSnapshot> finalBuffers = [];
+        StepResult? lastResult = null;
         var stepCount = 0;
         var terminated = false;
 
         for (var step = 0; step < _options.MaxStepsPerEpoch && !cancellationToken.IsCancellationRequested; step++)
         {
-            var result = await core.StepAsync();
+            var result = await core.StepAsync(cancellationToken);
+            lastResult = result;
             stepCount = step + 1;
 
             await artifactsWriter.AppendStepAsync(session, step, result, cancellationToken);
-            logger.LogInformation(
-                "Epoch {Epoch} step {Step}: rule={RuleId}, stop={StopReason}, ops={OperationCount}",
-                epoch,
-                step,
-                result.SelectedRuleId ?? "<none>",
-                result.StopReason,
-                result.Operations.Count);
+            LogStep(epoch, step, result);
 
             stopReason = result.StopReason;
             finalBuffers = result.BufferStatesAfter;
@@ -114,6 +112,84 @@ public class HarnessRunner(
             stopReason = "max_steps_reached";
         }
 
-        await artifactsWriter.WriteSummaryAsync(session, stepCount, stopReason, finalBuffers, cancellationToken);
+        await artifactsWriter.WriteSummaryAsync(
+            session,
+            stepCount,
+            stopReason,
+            finalBuffers,
+            lastResult,
+            cancellationToken);
+    }
+
+    private void LogStep(int epoch, int step, StepResult result)
+    {
+        if (string.Equals(result.StopReason, "error", StringComparison.OrdinalIgnoreCase))
+        {
+            logger.LogError(
+                "Epoch {Epoch} step {Step}: rule={RuleId}, stop={StopReason}, stage={FailureStage}, errorType={ErrorType}, error={ErrorMessage}, matched={SatisfiedRuleIds}, ops={OperationCount}",
+                epoch,
+                step,
+                result.SelectedRuleId ?? "<none>",
+                result.StopReason,
+                result.FailureStage ?? "<unknown>",
+                result.ErrorType ?? "<unknown>",
+                result.ErrorMessage ?? "<none>",
+                string.Join(", ", result.SatisfiedRuleIds),
+                result.Operations.Count);
+            logger.LogError(
+                "Epoch {Epoch} step {Step} diagnostics={DiagnosticsJson}",
+                epoch,
+                step,
+                SerializeForLog(result.Diagnostics));
+            logger.LogError(
+                "Epoch {Epoch} step {Step} bufferStatesBefore={BufferStatesBeforeJson}",
+                epoch,
+                step,
+                SerializeForLog(result.BufferStatesBefore));
+            logger.LogError(
+                "Epoch {Epoch} step {Step} bufferStatesAfter={BufferStatesAfterJson}",
+                epoch,
+                step,
+                SerializeForLog(result.BufferStatesAfter));
+
+            if (!string.IsNullOrWhiteSpace(result.ErrorDetails))
+            {
+                logger.LogError(
+                    "Epoch {Epoch} step {Step} errorDetails={ErrorDetails}",
+                    epoch,
+                    step,
+                    result.ErrorDetails);
+            }
+
+            return;
+        }
+
+        logger.LogInformation(
+            "Epoch {Epoch} step {Step}: rule={RuleId}, stop={StopReason}, matched={SatisfiedRuleCount}, ops={OperationCount}",
+            epoch,
+            step,
+            result.SelectedRuleId ?? "<none>",
+            result.StopReason,
+            result.SatisfiedRuleIds.Count,
+            result.Operations.Count);
+
+        if (logger.IsEnabled(LogLevel.Debug))
+        {
+            logger.LogDebug(
+                "Epoch {Epoch} step {Step} diagnostics={DiagnosticsJson}",
+                epoch,
+                step,
+                SerializeForLog(result.Diagnostics));
+            logger.LogDebug(
+                "Epoch {Epoch} step {Step} operations={OperationsJson}",
+                epoch,
+                step,
+                SerializeForLog(result.Operations));
+        }
+    }
+
+    private string SerializeForLog(object? value)
+    {
+        return JsonSerializer.Serialize(value, _jsonOptions);
     }
 }
