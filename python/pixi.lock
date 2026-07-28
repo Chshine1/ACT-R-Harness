@@ -874,8 +874,6 @@ packages:
   timestamp: 1753484092156
 - pypi: .
   name: actr-harness
-  requires_dist:
-  - openai>=2.46.0,<3
   requires_python: '>=3.11'
 - pypi: https://files.pythonhosted.org/packages/00/75/3945e26d5c94ae6ed9be5caef73d4d66c47dc8cfdd7b4995efaf942754e0/grpcio_tools-1.81.1-cp313-cp313-win_amd64.whl
   name: grpcio-tools

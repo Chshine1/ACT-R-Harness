@@ -8,7 +8,7 @@ from actr_harness.generated.grpc.actr.services import (
     DecodeActionResponse,
 )
 
-from betterproto.lib.std.google.protobuf import Struct
+from actr_harness.utils import dict_to_struct
 from dataclasses import dataclass, field, asdict
 from typing import Any
 from .buffers_view import BuffersView
@@ -99,7 +99,7 @@ class ActionResolver:
                     BufferOperation(
                         target_module_id=base_op.target_module_id,
                         command=base_op.command,
-                        params=Struct().from_dict(base_params),
+                        params=dict_to_struct(base_params),
                     )
                 )
 
@@ -173,7 +173,7 @@ class ActionResolver:
                     BufferOperation(
                         target_module_id=item["target_module_id"],
                         command=item["command"],
-                        params=Struct().from_dict(item.get("params", {})),
+                        params=dict_to_struct(item.get("params", {})),
                     )
                 )
             except (KeyError, TypeError):
@@ -233,7 +233,7 @@ class ActionResolver:
                     BufferOperation(
                         target_module_id=item["target_module_id"],
                         command=item["command"],
-                        params=Struct().from_dict(item.get("params", {})),
+                        params=dict_to_struct(item.get("params", {})),
                     )
                 )
             except (KeyError, TypeError):
