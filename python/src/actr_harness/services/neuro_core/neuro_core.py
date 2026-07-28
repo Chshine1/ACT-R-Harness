@@ -34,23 +34,25 @@ class NeuroCore(NeuroCoreBase):
         self._condition_evaluator = ConditionEvaluator(self._llm)
         self._action_resolver = ActionResolver(self._llm)
 
-    # noinspection PyPep8Naming
-    async def EvaluateConditions(  # noqa: N802
+    async def evaluate_conditions(
             self,
-            request: EvaluateConditionsRequest,
+            evaluate_conditions_request: EvaluateConditionsRequest,
     ) -> EvaluateConditionsResponse:
         logger.info(
             "EvaluateConditions request: rules=%d buffers=%d",
-            len(request.conditions),
-            len(request.buffer_states),
+            len(evaluate_conditions_request.conditions),
+            len(evaluate_conditions_request.buffer_states),
         )
         try:
-            response = await self._condition_evaluator.evaluate(request.conditions, request.buffer_states)
+            response = await self._condition_evaluator.evaluate(
+                evaluate_conditions_request.conditions,
+                evaluate_conditions_request.buffer_states
+            )
         except Exception:
             logger.exception(
                 "EvaluateConditions failed: rules=%d buffers=%d",
-                len(request.conditions),
-                len(request.buffer_states),
+                len(evaluate_conditions_request.conditions),
+                len(evaluate_conditions_request.buffer_states),
             )
             raise
 
@@ -61,29 +63,28 @@ class NeuroCore(NeuroCoreBase):
         )
         return response
 
-    # noinspection PyPep8Naming
-    async def DecodeAction(  # noqa: N802
+    async def decode_action(
             self,
-            request: DecodeActionRequest,
+            decode_action_request: DecodeActionRequest,
     ) -> DecodeActionResponse:
         logger.info(
             "DecodeAction request: rule=%s buffers=%d schemas=%d commands=%d semantics=%d",
-            request.action_intent.rule_id,
-            len(request.current_states),
-            len(request.schemas),
-            len(request.action_intent.commands),
-            len(request.action_intent.semantics),
+            decode_action_request.action_intent.rule_id,
+            len(decode_action_request.current_states),
+            len(decode_action_request.schemas),
+            len(decode_action_request.action_intent.commands),
+            len(decode_action_request.action_intent.semantics),
         )
         try:
             response = await self._action_resolver.decode_action(
-                request.action_intent,
-                request.current_states,
-                request.schemas
+                decode_action_request.action_intent,
+                decode_action_request.current_states,
+                decode_action_request.schemas
             )
         except Exception:
             logger.exception(
                 "DecodeAction failed for rule=%s",
-                request.action_intent.rule_id,
+                decode_action_request.action_intent.rule_id,
             )
             raise
 
