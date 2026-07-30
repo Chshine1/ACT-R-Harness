@@ -15,14 +15,12 @@
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
         <PackageReference Include="JetBrains.Annotations" Version="2026.2.0"/>
-        <PackageReference Include="MethodDecoratorExAsync.Fody" Version="0.9.0.5" />
+        <PackageReference Include="MethodBoundaryAspect.Fody" Version="2.0.150" />
         <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.10" />
         <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.10" />
     </ItemGroup>
 
     <ItemGroup>
-        <Compile Include="..\_SharedSource\Observability\ObserveBoundaryAttribute.cs" Link="Observability\ObserveBoundaryAttribute.cs" />
-        <Compile Include="..\_SharedSource\Observability\ObserveBoundaryRegistration.cs" Link="Observability\ObserveBoundaryRegistration.cs" />
         <ProjectReference Include="..\Harness.Abstractions\Harness.Abstractions.csproj"/>
         <ProjectReference Include="..\Harness.Codebase\Harness.Codebase.csproj"/>
     </ItemGroup>

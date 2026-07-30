@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Logging;
 
-namespace Harness.Abstractions.Observability;
+namespace Harness.Shared.Observability;
 
 public interface IProvideLogger
 {

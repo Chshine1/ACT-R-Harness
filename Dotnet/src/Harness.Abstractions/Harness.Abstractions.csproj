@@ -15,13 +15,11 @@
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
         <PackageReference Include="JetBrains.Annotations" Version="2026.2.0" />
-        <PackageReference Include="MethodDecoratorExAsync.Fody" Version="0.9.0.5" />
+        <PackageReference Include="MethodBoundaryAspect.Fody" Version="2.0.150" />
         <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.10" />
     </ItemGroup>
 
     <ItemGroup>
-        <Compile Include="..\_SharedSource\Observability\ObserveBoundaryAttribute.cs" Link="Observability\ObserveBoundaryAttribute.cs" />
-        <Compile Include="..\_SharedSource\Observability\ObserveBoundaryRegistration.cs" Link="Observability\ObserveBoundaryRegistration.cs" />
         <Protobuf Include="..\..\..\shared\proto\common.proto"
                   GrpcServices="None"
                   ProtoRoot="..\..\..\shared\proto"/>
@@ -34,6 +32,10 @@
         <Protobuf Include="..\..\..\shared\proto\services\procedural_memory.proto"
                   GrpcServices="Client"
                   ProtoRoot="..\..\..\shared\proto"/>
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\Harness.Shared\Harness.Shared.csproj" />
     </ItemGroup>
 
 </Project>

@@ -1,6 +1,6 @@
 using System.Collections;
 
-namespace Harness.Abstractions.Observability;
+namespace Harness.Shared.Observability;
 
 public static class ObservabilityFormatter
 {

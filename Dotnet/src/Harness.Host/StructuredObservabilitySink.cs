@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
-using Harness.Abstractions.Observability;
 using Harness.Core.Observability;
+using Harness.Shared.Observability;
 using Microsoft.Extensions.Logging;
 
 namespace Harness.Host;

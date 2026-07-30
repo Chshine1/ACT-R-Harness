@@ -287,3 +287,5 @@ __pycache__/
 *.xsd.cs
 
 appsettings.json
+
+FodyWeavers.xsd

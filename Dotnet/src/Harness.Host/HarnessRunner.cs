@@ -1,10 +1,9 @@
 using Harness.Abstractions;
-using Harness.Abstractions.Observability;
 using Harness.Abstractions.Reward;
 using Harness.Core;
 using Harness.Core.Observability;
 using Harness.Host.Options;
-using Harness.Observability;
+using Harness.Shared.Observability;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;

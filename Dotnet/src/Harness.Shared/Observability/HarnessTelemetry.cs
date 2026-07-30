@@ -1,6 +1,6 @@
 using System.Diagnostics;
 
-namespace Harness.Abstractions.Observability;
+namespace Harness.Shared.Observability;
 
 public static class HarnessTelemetry
 {

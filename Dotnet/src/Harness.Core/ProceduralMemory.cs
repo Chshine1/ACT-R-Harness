@@ -2,9 +2,8 @@ using Google.Protobuf.WellKnownTypes;
 using Harness.Abstractions;
 using Harness.Abstractions.Actr;
 using Harness.Abstractions.Actr.Services;
-using Harness.Abstractions.Observability;
 using Harness.Core.Observability;
-using Harness.Observability;
+using Harness.Shared.Observability;
 using Microsoft.Extensions.Logging;
 
 namespace Harness.Core;

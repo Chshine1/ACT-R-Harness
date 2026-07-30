@@ -1,31 +1,27 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Reflection;
-using Harness.Abstractions.Observability;
 using JetBrains.Annotations;
+using MethodBoundaryAspect.Fody.Attributes;
 using Microsoft.Extensions.Logging;
 
-namespace Harness.Observability;
+namespace Harness.Shared.Observability;
 
 [AttributeUsage(AttributeTargets.Method | AttributeTargets.Constructor | AttributeTargets.Module)]
 [UsedImplicitly(ImplicitUseTargetFlags.Members)]
-public sealed class ObserveBoundaryAttribute : Attribute
+public sealed class ObserveBoundaryAttribute : OnMethodBoundaryAspect
 {
     private ILogger? _logger;
     private MethodBase? _method;
     private object?[] _args = [];
     private Stopwatch? _stopwatch;
     private Activity? _activity;
-    private bool _awaitsTaskContinuation;
 
-    public void Init(object? instance, MethodBase method, object?[] args)
+    public override void OnEntry(MethodExecutionArgs args)
     {
-        _logger = (instance as IProvideLogger)?.Logger;
-        _method = method;
-        _args = args;
-    }
+        _logger = (args.Instance as IProvideLogger)?.Logger;
+        _method = args.Method;
+        _args = args.Arguments;
 
-    public void OnEntry()
-    {
         if (_logger is null || _method is null)
         {
             return;
@@ -54,43 +50,17 @@ public sealed class ObserveBoundaryAttribute : Attribute
         }
     }
 
-    public void OnExit()
+    public override void OnExit(MethodExecutionArgs args)
     {
-        if (_method is MethodInfo info && typeof(Task).IsAssignableFrom(info.ReturnType))
-        {
-            _awaitsTaskContinuation = true;
-            return;
-        }
-
         Complete();
     }
 
-    public void OnException(Exception exception)
+    public override void OnException(MethodExecutionArgs args)
     {
-        Complete(exception);
+        Complete(args.Exception);
     }
 
-    public void OnTaskContinuation(Task task)
-    {
-        if (!_awaitsTaskContinuation && task.Status != TaskStatus.RanToCompletion)
-        {
-            return;
-        }
-
-        Exception? failure = null;
-        if (task.IsFaulted)
-        {
-            failure = task.Exception?.GetBaseException() ?? task.Exception;
-        }
-        else if (task.IsCanceled)
-        {
-            failure = new TaskCanceledException(task);
-        }
-
-        Complete(failure, task.Status);
-    }
-
-    private void Complete(Exception? exception = null, TaskStatus? taskStatus = null)
+    private void Complete(Exception? exception = null)
     {
         if (_logger is null || _method is null)
         {
@@ -106,10 +76,9 @@ public sealed class ObserveBoundaryAttribute : Attribute
             if (_logger.IsEnabled(LogLevel.Debug))
             {
                 _logger.LogDebug(
-                    "Boundary exit {Boundary} elapsedMs={ElapsedMs} taskStatus={TaskStatus}",
+                    "Boundary exit {Boundary} elapsedMs={ElapsedMs}",
                     GetBoundaryName(),
-                    elapsedMs,
-                    taskStatus?.ToString() ?? "<sync>");
+                    elapsedMs);
             }
 
             _activity?.SetStatus(ActivityStatusCode.Ok);

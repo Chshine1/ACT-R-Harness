@@ -1,4 +1,4 @@
-namespace Harness.Abstractions.Observability;
+namespace Harness.Shared.Observability;
 
 public sealed record HarnessExecutionState(
     string? RunId = null,

@@ -1,5 +1,5 @@
 using Grpc.Core;
-using Harness.Abstractions.Observability;
+using Harness.Shared.Observability;
 
 namespace Harness.Core.Observability;
 

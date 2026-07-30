@@ -1,5 +1,6 @@
 ﻿using Google.Protobuf.WellKnownTypes;
 using Harness.Abstractions.Actr;
+using Harness.Shared.Observability;
 using JetBrains.Annotations;
 
 namespace Harness.Abstractions.Modules;
@@ -27,7 +28,13 @@ public interface IStructRepresentable<out T> where T : class
 public interface IModule
 {
     string ModuleId { get; }
+
+    [ObserveBoundary]
     BufferState GetBufferState();
+
+    [ObserveBoundary]
     ModuleSchema GetOperationSchema();
+
+    [ObserveBoundary]
     void OperateBuffer(BufferOperation op);
 }

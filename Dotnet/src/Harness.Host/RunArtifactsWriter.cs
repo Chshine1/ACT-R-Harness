@@ -1,9 +1,8 @@
 using System.Text.Json;
-using Harness.Abstractions.Observability;
 using Harness.Core;
 using Harness.Core.Observability;
-using Harness.Observability;
 using Harness.Host.Options;
+using Harness.Shared.Observability;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
