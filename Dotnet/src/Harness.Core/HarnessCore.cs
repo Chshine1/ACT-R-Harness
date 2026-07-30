@@ -1,15 +1,28 @@
 using Harness.Abstractions;
 using Harness.Abstractions.Actr;
 using Harness.Abstractions.Modules;
+using Harness.Abstractions.Observability;
+using Harness.Core.Observability;
+using Harness.Observability;
+using Microsoft.Extensions.Logging;
 
 namespace Harness.Core;
 
-public class HarnessCore(IModuleRegistry moduleRegistry, IProceduralMemory proceduralMemory, INeuroCore neuro)
+public class HarnessCore(
+    IModuleRegistry moduleRegistry,
+    IProceduralMemory proceduralMemory,
+    INeuroCore neuro,
+    IObservabilityEventSink eventSink,
+    ILogger<HarnessCore> logger)
+    : IProvideLogger
 {
     private readonly IReadOnlyCollection<IModule> _modules = moduleRegistry.GetModules();
     private readonly Dictionary<string, IModule> _modulesById = moduleRegistry.GetModules()
         .ToDictionary(module => module.ModuleId, StringComparer.OrdinalIgnoreCase);
 
+    public ILogger Logger => logger;
+
+    [ObserveBoundary]
     public async Task<StepResult> StepAsync(CancellationToken cancellationToken = default)
     {
         var bufferStatesBefore = _modules.Select(module => module.GetBufferState()).ToList();
@@ -17,91 +30,103 @@ public class HarnessCore(IModuleRegistry moduleRegistry, IProceduralMemory proce
         var satisfiedRuleIds = Array.Empty<string>();
         string? selectedRuleId = null;
         var operationTraces = new List<OperationTrace>();
-        var diagnostics = new List<StepDiagnostic>
-        {
-            new(
-                "capture_buffers_before",
-                "Captured buffer snapshots before step execution.",
-                new Dictionary<string, object?>
-                {
-                    ["moduleIds"] = beforeSnapshots.Select(snapshot => snapshot.ModuleId).ToArray(),
-                    ["bufferCount"] = beforeSnapshots.Count
-                })
-        };
         var currentStage = "load_conditions";
+        var neuroInvolved = false;
+
+        eventSink.Record(
+            "step.started",
+            LogLevel.Debug,
+            "Captured buffer states before step execution.",
+            new Dictionary<string, object?>
+            {
+                ["bufferStatesBefore"] = beforeSnapshots,
+                ["bufferCount"] = beforeSnapshots.Count,
+                ["moduleIds"] = beforeSnapshots.Select(snapshot => snapshot.ModuleId).ToArray()
+            });
 
         try
         {
             var conditions = proceduralMemory.GetAllConditions();
-            diagnostics.Add(new StepDiagnostic(
-                "load_conditions",
+            eventSink.Record(
+                "rule.conditions_loaded",
+                LogLevel.Debug,
                 "Loaded procedural rule conditions from procedural memory.",
                 new Dictionary<string, object?>
                 {
-                    ["ruleCount"] = conditions.Count
-                }));
+                    ["ruleCount"] = conditions.Count,
+                    ["semanticConditionCount"] = conditions.Count(condition => condition.Semantics.Fields.Count > 0)
+                });
 
             if (conditions.Count == 0)
             {
-                return new StepResult(
-                    BufferStatesBefore: beforeSnapshots,
-                    BufferStatesAfter: beforeSnapshots,
-                    SatisfiedRuleIds: [],
-                    SelectedRuleId: null,
-                    Operations: [],
-                    IsTerminal: true,
-                    StopReason: "no_rules_loaded",
-                    Diagnostics: diagnostics);
+                return CompleteStep(
+                    stopReason: "no_rules_loaded",
+                    beforeSnapshots,
+                    beforeSnapshots,
+                    satisfiedRuleIds,
+                    selectedRuleId,
+                    operationTraces,
+                    isTerminal: true,
+                    neuroInvolved: neuroInvolved);
             }
 
             var schemas = _modules.Select(module => module.GetOperationSchema()).ToList();
-            diagnostics.Add(new StepDiagnostic(
-                "load_schemas",
-                "Collected module operation schemas for action decoding.",
+            eventSink.Record(
+                "action.schemas_loaded",
+                LogLevel.Debug,
+                "Collected module command schemas for action decoding.",
                 new Dictionary<string, object?>
                 {
                     ["moduleIds"] = schemas.Select(schema => schema.ModuleId).ToArray(),
                     ["moduleCount"] = schemas.Count
-                }));
+                });
 
             currentStage = "evaluate_conditions";
             satisfiedRuleIds = (await neuro.EvaluateConditionsAsync(
                 conditions,
                 bufferStatesBefore,
                 cancellationToken)).ToArray();
-            diagnostics.Add(new StepDiagnostic(
-                "evaluate_conditions",
-                "Evaluated rule conditions against current buffer state.",
+
+            eventSink.Record(
+                "rule.conflict_set",
+                LogLevel.Information,
+                "Evaluated rule conditions against the current buffer state.",
                 new Dictionary<string, object?>
                 {
                     ["satisfiedRuleIds"] = satisfiedRuleIds,
                     ["satisfiedRuleCount"] = satisfiedRuleIds.Length
-                }));
+                });
 
             if (satisfiedRuleIds.Length == 0)
             {
-                return new StepResult(
-                    BufferStatesBefore: beforeSnapshots,
-                    BufferStatesAfter: beforeSnapshots,
-                    SatisfiedRuleIds: satisfiedRuleIds,
-                    SelectedRuleId: null,
-                    Operations: [],
-                    IsTerminal: true,
-                    StopReason: "no_applicable_rule",
-                    Diagnostics: diagnostics);
+                return CompleteStep(
+                    stopReason: "no_applicable_rule",
+                    beforeSnapshots,
+                    beforeSnapshots,
+                    satisfiedRuleIds,
+                    selectedRuleId,
+                    operationTraces,
+                    isTerminal: true,
+                    neuroInvolved: neuroInvolved);
             }
 
             currentStage = "select_rule";
             var action = proceduralMemory.SelectRule(satisfiedRuleIds);
             selectedRuleId = action.RuleId;
-            diagnostics.Add(new StepDiagnostic(
-                "select_rule",
+            neuroInvolved = action.Semantics.Count > 0;
+
+            eventSink.Record(
+                "rule.selected",
+                LogLevel.Information,
                 "Selected a rule from the satisfied conflict set.",
                 new Dictionary<string, object?>
                 {
                     ["selectedRuleId"] = selectedRuleId,
-                    ["candidateRuleIds"] = satisfiedRuleIds
-                }));
+                    ["candidateRuleIds"] = satisfiedRuleIds,
+                    ["commandAliases"] = action.Commands.Keys.ToArray(),
+                    ["semanticKeys"] = action.Semantics.Keys.ToArray(),
+                    ["neuroInvolved"] = neuroInvolved
+                });
 
             currentStage = "decode_action";
             var operations = await neuro.DecodeActionAsync(
@@ -109,47 +134,88 @@ public class HarnessCore(IModuleRegistry moduleRegistry, IProceduralMemory proce
                 bufferStatesBefore,
                 schemas,
                 cancellationToken);
+
             operationTraces = operations.Select(ToTrace).ToList();
-            diagnostics.Add(new StepDiagnostic(
-                "decode_action",
+            eventSink.Record(
+                "action.decoded",
+                LogLevel.Information,
                 "Decoded the selected rule into concrete buffer operations.",
                 new Dictionary<string, object?>
                 {
+                    ["selectedRuleId"] = selectedRuleId,
                     ["operationCount"] = operationTraces.Count,
-                    ["operations"] = operationTraces
-                }));
+                    ["operations"] = operationTraces,
+                    ["neuroInvolved"] = neuroInvolved
+                });
 
             foreach (var operation in operations)
             {
                 currentStage = $"apply_operation:{operation.TargetModuleId}.{operation.Command}";
-                diagnostics.Add(new StepDiagnostic(
-                    "apply_operation",
-                    "Applying a decoded operation to a module buffer.",
-                    new Dictionary<string, object?>
-                    {
-                        ["targetModuleId"] = operation.TargetModuleId,
-                        ["command"] = operation.Command
-                    }));
-
                 if (!_modulesById.TryGetValue(operation.TargetModuleId, out var module))
                 {
                     throw new InvalidOperationException(
                         $"No module registered for target '{operation.TargetModuleId}'.");
                 }
 
+                var moduleBefore = ToSnapshot(module.GetBufferState());
                 module.OperateBuffer(operation);
+                var moduleAfter = ToSnapshot(module.GetBufferState());
+                var moduleChanges = BufferDiffBuilder.Build(moduleBefore.Data, moduleAfter.Data);
+
+                eventSink.Record(
+                    "buffer_operation.applied",
+                    LogLevel.Debug,
+                    "Applied a decoded operation to a module buffer.",
+                    new Dictionary<string, object?>
+                    {
+                        ["selectedRuleId"] = selectedRuleId,
+                        ["targetModuleId"] = operation.TargetModuleId,
+                        ["command"] = operation.Command,
+                        ["params"] = ToTrace(operation).Params,
+                        ["bufferBefore"] = moduleBefore,
+                        ["bufferAfter"] = moduleAfter,
+                        ["bufferChanges"] = moduleChanges
+                    });
             }
 
-            var bufferStatesAfter = _modules.Select(module => module.GetBufferState()).ToList();
-            var afterSnapshots = bufferStatesAfter.Select(ToSnapshot).ToList();
-            diagnostics.Add(new StepDiagnostic(
-                "capture_buffers_after",
-                "Captured buffer snapshots after step execution.",
+            var afterSnapshots = _modules.Select(module => module.GetBufferState())
+                .Select(ToSnapshot)
+                .ToList();
+
+            return CompleteStep(
+                stopReason: "rule_executed",
+                beforeSnapshots,
+                afterSnapshots,
+                satisfiedRuleIds,
+                selectedRuleId,
+                operationTraces,
+                isTerminal: false,
+                neuroInvolved: neuroInvolved);
+        }
+        catch (Exception ex)
+        {
+            var afterSnapshots = _modules.Select(module => module.GetBufferState())
+                .Select(ToSnapshot)
+                .ToList();
+            var bufferChanges = BufferDiffBuilder.Build(beforeSnapshots, afterSnapshots);
+
+            eventSink.Record(
+                "step.failed",
+                LogLevel.Error,
+                "Step execution failed with an exception.",
                 new Dictionary<string, object?>
                 {
-                    ["moduleIds"] = afterSnapshots.Select(snapshot => snapshot.ModuleId).ToArray(),
-                    ["bufferCount"] = afterSnapshots.Count
-                }));
+                    ["stopReason"] = "error",
+                    ["failureStage"] = currentStage,
+                    ["selectedRuleId"] = selectedRuleId,
+                    ["satisfiedRuleIds"] = satisfiedRuleIds,
+                    ["operations"] = operationTraces,
+                    ["bufferStatesBefore"] = beforeSnapshots,
+                    ["bufferStatesAfter"] = afterSnapshots,
+                    ["bufferChanges"] = bufferChanges,
+                    ["errorType"] = ex.GetType().FullName ?? ex.GetType().Name,
+                    ["errorMessage"] = ex.Message
+                });
 
             return new StepResult(
                 BufferStatesBefore: beforeSnapshots,
@@ -157,37 +223,54 @@ public class HarnessCore(IModuleRegistry moduleRegistry, IProceduralMemory proce
                 SatisfiedRuleIds: satisfiedRuleIds,
                 SelectedRuleId: selectedRuleId,
                 Operations: operationTraces,
-                IsTerminal: false,
-                StopReason: "rule_executed",
-                Diagnostics: diagnostics);
-        }
-        catch (Exception ex)
-        {
-            var bufferStatesAfter = _modules.Select(module => module.GetBufferState()).ToList();
-            diagnostics.Add(new StepDiagnostic(
-                "error",
-                "Step execution failed with an exception.",
-                new Dictionary<string, object?>
-                {
-                    ["failureStage"] = currentStage,
-                    ["errorType"] = ex.GetType().FullName ?? ex.GetType().Name,
-                    ["errorMessage"] = ex.Message
-                }));
-
-            return new StepResult(
-                BufferStatesBefore: beforeSnapshots,
-                BufferStatesAfter: bufferStatesAfter.Select(ToSnapshot).ToList(),
-                SatisfiedRuleIds: satisfiedRuleIds,
-                SelectedRuleId: selectedRuleId,
-                Operations: operationTraces,
+                BufferChanges: bufferChanges,
                 IsTerminal: true,
                 StopReason: "error",
-                Diagnostics: diagnostics,
                 FailureStage: currentStage,
                 ErrorType: ex.GetType().FullName ?? ex.GetType().Name,
                 ErrorMessage: ex.Message,
                 ErrorDetails: ex.ToString());
         }
+    }
+
+    private StepResult CompleteStep(
+        string stopReason,
+        IReadOnlyList<ModuleSnapshot> beforeSnapshots,
+        IReadOnlyList<ModuleSnapshot> afterSnapshots,
+        IReadOnlyList<string> satisfiedRuleIds,
+        string? selectedRuleId,
+        IReadOnlyList<OperationTrace> operationTraces,
+        bool isTerminal,
+        bool neuroInvolved)
+    {
+        var bufferChanges = BufferDiffBuilder.Build(beforeSnapshots, afterSnapshots);
+
+        eventSink.Record(
+            "step.completed",
+            LogLevel.Debug,
+            "Completed step execution.",
+            new Dictionary<string, object?>
+            {
+                ["stopReason"] = stopReason,
+                ["isTerminal"] = isTerminal,
+                ["selectedRuleId"] = selectedRuleId,
+                ["satisfiedRuleIds"] = satisfiedRuleIds,
+                ["operations"] = operationTraces,
+                ["bufferStatesBefore"] = beforeSnapshots,
+                ["bufferStatesAfter"] = afterSnapshots,
+                ["bufferChanges"] = bufferChanges,
+                ["neuroInvolved"] = neuroInvolved
+            });
+
+        return new StepResult(
+            BufferStatesBefore: beforeSnapshots,
+            BufferStatesAfter: afterSnapshots,
+            SatisfiedRuleIds: satisfiedRuleIds,
+            SelectedRuleId: selectedRuleId,
+            Operations: operationTraces,
+            BufferChanges: bufferChanges,
+            IsTerminal: isTerminal,
+            StopReason: stopReason);
     }
 
     private static ModuleSnapshot ToSnapshot(BufferState state)

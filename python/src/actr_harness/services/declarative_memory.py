@@ -1,3 +1,4 @@
+import logging
 import math
 import random
 import time
@@ -12,6 +13,9 @@ from actr_harness.generated.grpc.actr.services import (
     RetrieveResponse,
     TickMemoryRequest,
 )
+from actr_harness.observability import log_event, observe_boundary
+
+logger = logging.getLogger(__name__)
 
 
 class DeclarativeMemory(DeclarativeMemoryBase):
@@ -21,11 +25,28 @@ class DeclarativeMemory(DeclarativeMemoryBase):
         self.decay = decay
         self.noise_sd = noise_sd
         self._sim_time = time.time()
+        log_event(
+            logger,
+            logging.INFO,
+            "service.initialized",
+            "DeclarativeMemory initialized.",
+            decay=decay,
+            noise_sd=noise_sd,
+        )
 
+    @observe_boundary("declarative_memory.add_chunk")
     async def add_chunk(self, add_chunk_request: AddChunkRequest) -> Empty:
         chunk = add_chunk_request.chunk
         self.chunks[chunk.id] = chunk
         self.access_log[chunk.id] = [self._sim_time]
+        log_event(
+            logger,
+            logging.DEBUG,
+            "memory_chunk.added",
+            "Added chunk to declarative memory.",
+            chunk_id=chunk.id,
+            slot_keys=list(chunk.slots.keys()),
+        )
         return Empty()
 
     def _base_activation(self, chunk_id: str, current_time: float) -> float:
@@ -37,6 +58,7 @@ class DeclarativeMemory(DeclarativeMemoryBase):
             return -1e6
         return math.log(sum_term)
 
+    @observe_boundary("declarative_memory.retrieve")
     async def retrieve(self, retrieve_request: RetrieveRequest) -> RetrieveResponse:
         best = None
         best_act = -float('inf')
@@ -54,10 +76,28 @@ class DeclarativeMemory(DeclarativeMemoryBase):
                 best = chunk
         if best:
             self.access_log[best.id].append(now)
+        log_event(
+            logger,
+            logging.INFO,
+            "memory_retrieval.completed",
+            "Completed declarative memory retrieval.",
+            cue=dict(retrieve_request.cue),
+            retrieved_chunk_id=best.id if best else None,
+            activation=best_act if best else None,
+        )
         return RetrieveResponse(chunk=best)
 
+    @observe_boundary("declarative_memory.tick_memory")
     async def tick_memory(self, tick_memory_request: TickMemoryRequest) -> Empty:
         self._sim_time += tick_memory_request.delta_time
+        log_event(
+            logger,
+            logging.DEBUG,
+            "memory_clock.advanced",
+            "Advanced declarative memory simulation time.",
+            delta_time=tick_memory_request.delta_time,
+            buffer_modules=list(tick_memory_request.buffer_snapshots.to_dict().keys()),
+        )
         return Empty()
 
     def _cue_score(self, chunk: MemoryChunk, cue: dict[str, str]) -> float:

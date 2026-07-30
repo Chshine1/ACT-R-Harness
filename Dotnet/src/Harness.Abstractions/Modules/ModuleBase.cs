@@ -1,24 +1,31 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.Linq.Expressions;
 using System.Reflection;
 using Google.Protobuf.WellKnownTypes;
 using Harness.Abstractions.Actr;
+using Harness.Abstractions.Observability;
+using Harness.Observability;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging;
 using Type = System.Type;
 
 namespace Harness.Abstractions.Modules;
 
-public abstract class ModuleBase : IModule
+public abstract class ModuleBase : IModule, IProvideLogger
 {
     private record struct CommandCache(Action<IModule, Struct?> Action, string Schema);
 
-    private static readonly ConcurrentDictionary<Type, Dictionary<string, CommandCache>> cache = new();
+    private static readonly ConcurrentDictionary<Type, Dictionary<string, CommandCache>> Cache = new();
     private readonly Dictionary<string, CommandCache> _commandMap;
 
-    protected ModuleBase()
+    protected ModuleBase(ILogger? logger = null)
     {
+        Logger = logger ?? NullLogger.Instance;
         var type = GetType();
-        _commandMap = cache.GetOrAdd(type, static t => BuildCommandMap(t));
+        _commandMap = Cache.GetOrAdd(type, static t => BuildCommandMap(t));
     }
+
+    public ILogger Logger { get; }
 
     private static Dictionary<string, CommandCache> BuildCommandMap(Type moduleType)
     {
@@ -82,20 +89,21 @@ public abstract class ModuleBase : IModule
     public ModuleSchema GetOperationSchema()
     {
         var schema = new ModuleSchema { ModuleId = ModuleId };
-        foreach (var (cmdName, c) in _commandMap)
+        foreach (var (cmdName, cacheEntry) in _commandMap)
         {
-            schema.CommandSchemas[cmdName] = c.Schema;
+            schema.CommandSchemas[cmdName] = cacheEntry.Schema;
         }
 
         return schema;
     }
 
+    [ObserveBoundary]
     public void OperateBuffer(BufferOperation op)
     {
-        if (!_commandMap.TryGetValue(op.Command, out var c))
-            throw new InvalidOperationException(
-                $"Module '{ModuleId}' does not handle command '{op.Command}'.");
+        if (!_commandMap.TryGetValue(op.Command, out var cacheEntry))
+            throw new InvalidOperationException($"Module '{ModuleId}' does not handle command '{op.Command}'.");
+
         var hasParam = op.Params.Fields.Count > 0;
-        c.Action(this, hasParam ? op.Params : null);
+        cacheEntry.Action(this, hasParam ? op.Params : null);
     }
 }

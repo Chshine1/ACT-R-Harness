@@ -1,6 +1,9 @@
 using Harness.Abstractions;
 using Harness.Abstractions.Actr;
 using Harness.Abstractions.Actr.Services;
+using Harness.Abstractions.Observability;
+using Harness.Core.Observability;
+using Harness.Observability;
 using Microsoft.Extensions.Logging;
 
 namespace Harness.Core;
@@ -8,47 +11,32 @@ namespace Harness.Core;
 public class NeuroCore(
     Abstractions.Actr.Services.NeuroCore.NeuroCoreClient client,
     ILogger<NeuroCore> logger)
-    : INeuroCore
+    : INeuroCore, IProvideLogger
 {
+    public ILogger Logger => logger;
+
+    [ObserveBoundary]
     public async Task<IReadOnlyList<string>> EvaluateConditionsAsync(
         IReadOnlyList<ProceduralCondition> conditions,
         IReadOnlyList<BufferState> bufferStates,
         CancellationToken cancellationToken = default
     )
     {
-        logger.LogInformation(
-            "NeuroCore.EvaluateConditions request: rules={RuleCount}, buffers={BufferCount}",
-            conditions.Count,
-            bufferStates.Count);
+        using var call = GrpcObservabilityCall.Begin("neuro_core.evaluate_conditions");
+        var response = await client.EvaluateConditionsAsync(
+            new EvaluateConditionsRequest
+            {
+                Conditions = { conditions },
+                BufferStates = { bufferStates }
+            },
+            headers: call.Headers,
+            cancellationToken: cancellationToken
+        );
 
-        try
-        {
-            var response = await client.EvaluateConditionsAsync(
-                new EvaluateConditionsRequest
-                {
-                    Conditions = { conditions },
-                    BufferStates = { bufferStates }
-                },
-                cancellationToken: cancellationToken
-            );
-
-            logger.LogInformation(
-                "NeuroCore.EvaluateConditions response: satisfied={SatisfiedRuleCount}, ruleIds={SatisfiedRuleIds}",
-                response.SatisfiedRuleIds.Count,
-                response.SatisfiedRuleIds.ToArray());
-            return response.SatisfiedRuleIds;
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(
-                ex,
-                "NeuroCore.EvaluateConditions failed for rules={RuleCount}, buffers={BufferCount}",
-                conditions.Count,
-                bufferStates.Count);
-            throw;
-        }
+        return response.SatisfiedRuleIds;
     }
 
+    [ObserveBoundary]
     public async Task<IReadOnlyList<BufferOperation>> DecodeActionAsync(
         NeuroAction actionIntent,
         IReadOnlyList<BufferState> currentStates,
@@ -56,46 +44,18 @@ public class NeuroCore(
         CancellationToken cancellationToken = default
     )
     {
-        logger.LogInformation(
-            "NeuroCore.DecodeAction request: rule={RuleId}, buffers={BufferCount}, schemas={SchemaCount}, commands={CommandCount}, semantics={SemanticCount}",
-            actionIntent.RuleId,
-            currentStates.Count,
-            schemas.Count,
-            actionIntent.Commands.Count,
-            actionIntent.Semantics.Count);
+        using var call = GrpcObservabilityCall.Begin("neuro_core.decode_action");
+        var response = await client.DecodeActionAsync(
+            new DecodeActionRequest
+            {
+                ActionIntent = actionIntent,
+                CurrentStates = { currentStates },
+                Schemas = { schemas }
+            },
+            headers: call.Headers,
+            cancellationToken: cancellationToken
+        );
 
-        if (logger.IsEnabled(LogLevel.Debug))
-        {
-            logger.LogDebug(
-                "NeuroCore.DecodeAction payload: commandAliases={CommandAliases}, semanticKeys={SemanticKeys}",
-                actionIntent.Commands.Keys.ToArray(),
-                actionIntent.Semantics.Keys.ToArray());
-        }
-
-        try
-        {
-            var response = await client.DecodeActionAsync(
-                new DecodeActionRequest
-                {
-                    ActionIntent = actionIntent,
-                    CurrentStates = { currentStates },
-                    Schemas = { schemas }
-                },
-                cancellationToken: cancellationToken
-            );
-
-            logger.LogInformation(
-                "NeuroCore.DecodeAction response: operations={OperationCount}",
-                response.Operations.Count);
-            return response.Operations;
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(
-                ex,
-                "NeuroCore.DecodeAction failed for rule={RuleId}",
-                actionIntent.RuleId);
-            throw;
-        }
+        return response.Operations;
     }
 }

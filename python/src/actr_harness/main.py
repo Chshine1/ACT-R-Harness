@@ -5,6 +5,7 @@ import os
 from grpclib.server import Server
 from grpclib.utils import graceful_exit
 
+from .observability import attach_grpc_observability, configure_logging, log_event
 from .services.declarative_memory import DeclarativeMemory
 from .services.neuro_core.neuro_core import NeuroCore
 from .services.procedural_memory import ProceduralMemory
@@ -26,10 +27,7 @@ async def main():
     memory_noise_sd = float(os.getenv("DECLARATIVE_MEMORY_NOISE_SD", "0.25"))
     resolved_log_level = _resolve_log_level(log_level)
 
-    logging.basicConfig(
-        level=resolved_log_level,
-        format="%(asctime)s %(levelname)s %(name)s %(message)s",
-    )
+    configure_logging(resolved_log_level)
     logger = logging.getLogger(__name__)
 
     server = Server([
@@ -43,13 +41,17 @@ async def main():
             random_seed=int(procedural_random_seed) if procedural_random_seed else None,
         ),
     ])
+    attach_grpc_observability(server)
 
     host, port_str = '0.0.0.0', str(port)
-    logger.info(
-        "Starting gRPC server on %s:%s with log_level=%s",
-        host,
-        port_str,
-        logging.getLevelName(resolved_log_level),
+    log_event(
+        logger,
+        logging.INFO,
+        "python_server.started",
+        "Starting gRPC server.",
+        host=host,
+        port=port_str,
+        log_level=logging.getLevelName(resolved_log_level),
     )
 
     try:

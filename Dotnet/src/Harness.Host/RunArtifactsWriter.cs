@@ -1,22 +1,34 @@
 using System.Text.Json;
+using Harness.Abstractions.Observability;
 using Harness.Core;
+using Harness.Core.Observability;
+using Harness.Observability;
 using Harness.Host.Options;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Harness.Host;
 
 public sealed record RunArtifactsSession(
+    string RunId,
     string RunDirectory,
     string TracePath,
     string SummaryPath,
     string ScenarioName,
     int Epoch);
 
-public class RunArtifactsWriter(IOptions<HarnessOptions> options)
+public class RunArtifactsWriter(
+    IObservabilityEventSink eventSink,
+    IOptions<HarnessOptions> options,
+    ILogger<RunArtifactsWriter> logger)
+    : IProvideLogger
 {
     private readonly HarnessOptions _options = options.Value;
     private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web);
 
+    public ILogger Logger => logger;
+
+    [ObserveBoundary]
     public RunArtifactsSession StartRun(int epoch)
     {
         var artifactRoot = Path.GetFullPath(_options.ArtifactRoot);
@@ -24,10 +36,12 @@ public class RunArtifactsWriter(IOptions<HarnessOptions> options)
 
         var timestamp = DateTimeOffset.UtcNow.ToString("yyyyMMddTHHmmssfffZ");
         var scenarioName = SanitizePathSegment(_options.Scenario.Name);
-        var runDirectory = Path.Combine(artifactRoot, $"{timestamp}-{scenarioName}-epoch{epoch:D2}");
+        var runId = $"{timestamp}-{scenarioName}-epoch{epoch:D2}";
+        var runDirectory = Path.Combine(artifactRoot, runId);
         Directory.CreateDirectory(runDirectory);
 
         return new RunArtifactsSession(
+            runId,
             runDirectory,
             Path.Combine(runDirectory, "trace.jsonl"),
             Path.Combine(runDirectory, "summary.md"),
@@ -35,61 +49,87 @@ public class RunArtifactsWriter(IOptions<HarnessOptions> options)
             epoch);
     }
 
-    public async Task AppendStepAsync(
-        RunArtifactsSession session,
-        int stepNumber,
-        StepResult result,
-        CancellationToken cancellationToken)
-    {
-        var line = JsonSerializer.Serialize(new
-        {
-            timestampUtc = DateTimeOffset.UtcNow,
-            epoch = session.Epoch,
-            step = stepNumber,
-            result.StopReason,
-            result.IsTerminal,
-            result.FailureStage,
-            result.ErrorType,
-            result.ErrorMessage,
-            result.ErrorDetails,
-            result.SelectedRuleId,
-            result.SatisfiedRuleIds,
-            result.Operations,
-            result.Diagnostics,
-            bufferStatesBefore = result.BufferStatesBefore,
-            bufferStatesAfter = result.BufferStatesAfter
-        }, _jsonOptions);
-
-        await File.AppendAllTextAsync(session.TracePath, line + Environment.NewLine, cancellationToken);
-    }
-
-    public async Task WriteSummaryAsync(
+    [ObserveBoundary]
+    public async Task WriteArtifactsAsync(
         RunArtifactsSession session,
         int totalSteps,
         string stopReason,
-        IReadOnlyList<ModuleSnapshot> finalBuffers,
         StepResult? lastResult,
         CancellationToken cancellationToken)
     {
+        var events = eventSink.GetEvents(session.RunId);
+        try
+        {
+            await WriteTraceAsync(session, events, cancellationToken);
+            await WriteSummaryAsync(session, totalSteps, stopReason, lastResult, events, cancellationToken);
+        }
+        finally
+        {
+            eventSink.Clear(session.RunId);
+        }
+    }
+
+    private async Task WriteTraceAsync(
+        RunArtifactsSession session,
+        IReadOnlyList<HarnessEvent> events,
+        CancellationToken cancellationToken)
+    {
+        var lines = events.Select(entry => JsonSerializer.Serialize(new
+        {
+            timestampUtc = entry.TimestampUtc,
+            entry.Name,
+            level = entry.Level.ToString(),
+            entry.Message,
+            runId = entry.Context.RunId,
+            epoch = entry.Context.Epoch,
+            step = entry.Context.Step,
+            correlationId = entry.Context.CorrelationId,
+            operation = entry.Context.Operation,
+            data = entry.Data
+        }, _jsonOptions));
+
+        await File.WriteAllLinesAsync(session.TracePath, lines, cancellationToken);
+    }
+
+    private async Task WriteSummaryAsync(
+        RunArtifactsSession session,
+        int totalSteps,
+        string stopReason,
+        StepResult? lastResult,
+        IReadOnlyList<HarnessEvent> events,
+        CancellationToken cancellationToken)
+    {
+        var finalBuffers = lastResult?.BufferStatesAfter ?? [];
         var finalBuffersJson = JsonSerializer.Serialize(finalBuffers, new JsonSerializerOptions(_jsonOptions)
         {
             WriteIndented = true
         });
+
+        var groupedEvents = events
+            .GroupBy(entry => entry.Name, StringComparer.Ordinal)
+            .OrderBy(group => group.Key, StringComparer.Ordinal)
+            .Select(group => $"- `{group.Key}`: {group.Count()}")
+            .ToList();
+
         var lines = new List<string>
         {
             "# Run Summary",
             string.Empty,
             $"Scenario: `{session.ScenarioName}`",
+            $"Run ID: `{session.RunId}`",
             $"Epoch: `{session.Epoch}`",
             $"Finished (UTC): `{DateTimeOffset.UtcNow:O}`",
             $"Total steps: `{totalSteps}`",
-            $"Stop reason: `{stopReason}`"
+            $"Stop reason: `{stopReason}`",
+            $"Recorded events: `{events.Count}`"
         };
 
         if (lastResult is not null)
         {
             lines.Add($"Last selected rule: `{lastResult.SelectedRuleId ?? "<none>"}`");
             lines.Add($"Matched rules: `{string.Join(", ", lastResult.SatisfiedRuleIds)}`");
+            lines.Add($"Operation count: `{lastResult.Operations.Count}`");
+            lines.Add($"Changed buffers: `{lastResult.BufferChanges.Count}`");
 
             if (!string.IsNullOrWhiteSpace(lastResult.ErrorMessage))
             {
@@ -108,6 +148,13 @@ public class RunArtifactsWriter(IOptions<HarnessOptions> options)
             }
         }
 
+        if (groupedEvents.Count > 0)
+        {
+            lines.Add(string.Empty);
+            lines.Add("## Event Counts");
+            lines.AddRange(groupedEvents);
+        }
+
         lines.AddRange([
             string.Empty,
             "## Final Buffers",
@@ -117,7 +164,6 @@ public class RunArtifactsWriter(IOptions<HarnessOptions> options)
         ]);
 
         var content = string.Join(Environment.NewLine, lines);
-
         await File.WriteAllTextAsync(session.SummaryPath, content, cancellationToken);
     }
 

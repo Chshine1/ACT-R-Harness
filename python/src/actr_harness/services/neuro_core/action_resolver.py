@@ -3,15 +3,13 @@ from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from actr_harness.generated.grpc.actr import (
-    BufferState,
     BufferOperation,
+    BufferState,
     ModuleSchema,
     NeuroAction,
 )
-from actr_harness.generated.grpc.actr.services import (
-    DecodeActionResponse,
-)
-
+from actr_harness.generated.grpc.actr.services import DecodeActionResponse
+from actr_harness.observability import log_event, observe_boundary
 from actr_harness.utils import dict_to_struct
 
 from .buffers_view import BuffersView
@@ -36,20 +34,13 @@ class ActionResolver:
     def __init__(self, llm_client: LLMClient):
         self._llm_client = llm_client
 
+    @observe_boundary("action_resolver.decode_action")
     async def decode_action(
             self,
             action_intent: NeuroAction,
             current_states: list[BufferState],
             schemas: list[ModuleSchema],
     ) -> DecodeActionResponse:
-        logger.info(
-            "ActionResolver.decode_action request: rule=%s buffers=%d schemas=%d commands=%d semantics=%d",
-            action_intent.rule_id,
-            len(current_states),
-            len(schemas),
-            len(action_intent.commands),
-            len(action_intent.semantics),
-        )
         view = BuffersView(current_states)
         keyed_schemas: dict[str, dict[str, str]] = {s.module_id: s.command_schemas for s in schemas}
 
@@ -71,15 +62,11 @@ class ActionResolver:
         semantic_entries: list[SemanticEntry] = []
 
         for alias, base_op in action_intent.commands.items():
-            base_params = self._resolve_placeholder_params(
-                base_op.params.to_dict(), view
-            )
+            base_params = self._resolve_placeholder_params(base_op.params.to_dict(), view)
             semantic = command_semantics.get(alias)
 
             if semantic is not None or len(meta_instructions) > 0:
-                schema = keyed_schemas.get(base_op.target_module_id, {}).get(
-                    base_op.command
-                )
+                schema = keyed_schemas.get(base_op.target_module_id, {}).get(base_op.command)
                 if schema is None:
                     raise ValueError(
                         "Missing schema for target_module_id="
@@ -90,26 +77,21 @@ class ActionResolver:
                 param_leaves: dict[str, str] = {}
                 if semantic is not None:
                     sources_raw = semantic.get("sources", [])
-                    sources_list = {
-                        src: view.get(src)
-                        for src in sources_raw
-                    }
+                    sources_list = {src: view.get(src) for src in sources_raw}
+                    param_leaves = self._flatten_semantic_params(semantic.get("params", {}))
 
-                    param_leaves = self._flatten_semantic_params(
-                        semantic.get("params", {})
+                semantic_entries.append(
+                    SemanticEntry(
+                        target_module_id=base_op.target_module_id,
+                        command=base_op.command,
+                        existing_params=base_params,
+                        semantic=semantic if semantic is not None else {},
+                        meta=meta_instructions,
+                        command_schema=schema,
+                        semantic_sources=sources_list,
+                        semantic_param_leaves=param_leaves,
                     )
-
-                entry = SemanticEntry(
-                    target_module_id=base_op.target_module_id,
-                    command=base_op.command,
-                    existing_params=base_params,
-                    semantic=semantic if semantic is not None else {},
-                    meta=meta_instructions,
-                    command_schema=schema,
-                    semantic_sources=sources_list,
-                    semantic_param_leaves=param_leaves,
                 )
-                semantic_entries.append(entry)
             else:
                 determined_ops.append(
                     BufferOperation(
@@ -119,11 +101,34 @@ class ActionResolver:
                     )
                 )
 
+        log_event(
+            logger,
+            logging.DEBUG,
+            "action_decode.plan_built",
+            "Built action decode plan.",
+            rule_id=action_intent.rule_id,
+            command_aliases=list(action_intent.commands.keys()),
+            semantic_keys=list(action_intent.semantics.keys()),
+            determined_operations=[_operation_summary(op) for op in determined_ops],
+            semantic_entries=[_semantic_entry_summary(entry) for entry in semantic_entries],
+            neuro_intent_count=len(neuro_intents),
+        )
+
         if len(semantic_entries) > 0:
             semantic_ops = await self._llm_resolve_semantic_commands(
-                determined_ops, semantic_entries, keyed_schemas
+                determined_ops,
+                semantic_entries,
+                keyed_schemas,
             )
             determined_ops.extend(semantic_ops)
+            log_event(
+                logger,
+                logging.INFO,
+                "action_decode.semantic_resolution",
+                "Resolved semantic command supplements.",
+                semantic_entry_count=len(semantic_entries),
+                produced_operations=[_operation_summary(op) for op in semantic_ops],
+            )
 
         if len(neuro_intents) > 0:
             command_supplements = [
@@ -144,26 +149,27 @@ class ActionResolver:
                 keyed_schemas,
             )
             determined_ops.extend(llm_ops)
+            log_event(
+                logger,
+                logging.INFO,
+                "action_decode.neuro_resolution",
+                "Resolved neuro intents into buffer operations.",
+                neuro_intent_count=len(neuro_intents),
+                produced_operations=[_operation_summary(op) for op in llm_ops],
+            )
 
-        logger.info(
-            "ActionResolver.decode_action response: operations=%d semantic_entries=%d neuro_intents=%d",
-            len(determined_ops),
-            len(semantic_entries),
-            len(neuro_intents),
-        )
-        logger.debug(
-            "ActionResolver.decode_action operations=%s",
-            [
-                {
-                    "target_module_id": op.target_module_id,
-                    "command": op.command,
-                    "params": op.params.to_dict(),
-                }
-                for op in determined_ops
-            ],
+        log_event(
+            logger,
+            logging.INFO,
+            "action_decode.completed",
+            "Completed action decode.",
+            rule_id=action_intent.rule_id,
+            operation_count=len(determined_ops),
+            operations=[_operation_summary(op) for op in determined_ops],
         )
         return DecodeActionResponse(operations=determined_ops)
 
+    @observe_boundary("action_resolver.llm_resolve_semantic_commands")
     async def _llm_resolve_semantic_commands(
             self,
             determined_ops: list[BufferOperation],
@@ -171,15 +177,8 @@ class ActionResolver:
             keyed_schemas: dict[str, dict[str, str]],
     ) -> list[BufferOperation]:
         prompt_data = {
-            "determined_ops": [
-                {
-                    "target_module_id": op.target_module_id,
-                    "command": op.command,
-                    "params": op.params.to_dict(),
-                }
-                for op in determined_ops
-            ],
-            "semantic_commands": [asdict(c) for c in semantic_entries],
+            "determined_ops": [_operation_summary(op) for op in determined_ops],
+            "semantic_commands": [asdict(entry) for entry in semantic_entries],
             "module_schemas": keyed_schemas,
         }
 
@@ -197,18 +196,26 @@ class ActionResolver:
         response = await self._llm_client.chat_json(prompt_data, system_prompt)
         ops: list[BufferOperation] = []
         if not isinstance(response, list):
-            logger.warning(
-                "Semantic command resolution returned non-list payload of type=%s",
-                type(response).__name__,
+            log_event(
+                logger,
+                logging.WARNING,
+                "action_decode.semantic_resolution_invalid_payload",
+                "Semantic command resolution returned a non-list payload.",
+                payload_type=type(response).__name__,
             )
             return ops
+
         for item in response:
             if not isinstance(item, dict):
-                logger.debug(
-                    "Skipping semantic command item with invalid type=%s",
-                    type(item).__name__,
+                log_event(
+                    logger,
+                    logging.DEBUG,
+                    "action_decode.semantic_resolution_item_skipped",
+                    "Skipped semantic command item with invalid type.",
+                    payload_type=type(item).__name__,
                 )
                 continue
+
             try:
                 ops.append(
                     BufferOperation(
@@ -218,7 +225,13 @@ class ActionResolver:
                     )
                 )
             except (KeyError, TypeError):
-                continue
+                log_event(
+                    logger,
+                    logging.DEBUG,
+                    "action_decode.semantic_resolution_item_skipped",
+                    "Skipped semantic command item with invalid shape.",
+                    item=item,
+                )
         return ops
 
     def _resolve_placeholder_params(self, value: Any, view: BuffersView) -> Any:
@@ -228,9 +241,9 @@ class ActionResolver:
                 return resolved if resolved is not None else value
             return value
         if isinstance(value, dict):
-            return {k: self._resolve_placeholder_params(v, view) for k, v in value.items()}
+            return {key: self._resolve_placeholder_params(inner, view) for key, inner in value.items()}
         if isinstance(value, list):
-            return [self._resolve_placeholder_params(v, view) for v in value]
+            return [self._resolve_placeholder_params(inner, view) for inner in value]
         return value
 
     def _flatten_semantic_params(self, value: Any, prefix: str = "") -> dict[str, str]:
@@ -238,7 +251,8 @@ class ActionResolver:
             leaves: dict[str, str] = {}
             for key, child in value.items():
                 path = f"{prefix}.{key}" if len(prefix) > 0 else key
-                for k, v in (self._flatten_semantic_params(child, path).items()): leaves[k] = v
+                for leaf_key, leaf_value in self._flatten_semantic_params(child, path).items():
+                    leaves[leaf_key] = leaf_value
             return leaves
         if isinstance(value, str):
             return {prefix: value}
@@ -247,11 +261,12 @@ class ActionResolver:
             f"got {type(value).__name__}."
         )
 
+    @observe_boundary("action_resolver.llm_decode_fuzzy")
     async def _llm_decode_fuzzy(
             self,
-            command_supplements: list[dict],
-            neuro_intents: list[dict],
-            buffers: list[dict],
+            command_supplements: list[dict[str, Any]],
+            neuro_intents: list[dict[str, Any]],
+            buffers: list[dict[str, Any]],
             schemas: dict[str, Any],
     ) -> list[BufferOperation]:
         prompt_data = {
@@ -268,13 +283,17 @@ class ActionResolver:
             "No commentary."
         )
         ops_raw = await self._llm_client.chat_json(prompt_data, system_prompt)
-        ops = []
+        ops: list[BufferOperation] = []
         if not isinstance(ops_raw, list):
-            logger.warning(
-                "Fuzzy decode returned non-list payload of type=%s",
-                type(ops_raw).__name__,
+            log_event(
+                logger,
+                logging.WARNING,
+                "action_decode.neuro_resolution_invalid_payload",
+                "Fuzzy decode returned a non-list payload.",
+                payload_type=type(ops_raw).__name__,
             )
             return ops
+
         for item in ops_raw:
             try:
                 ops.append(
@@ -285,6 +304,29 @@ class ActionResolver:
                     )
                 )
             except (KeyError, TypeError):
-                logger.debug("Skipping fuzzy decode item with invalid shape: %s", item)
-                continue
+                log_event(
+                    logger,
+                    logging.DEBUG,
+                    "action_decode.neuro_resolution_item_skipped",
+                    "Skipped fuzzy decode item with invalid shape.",
+                    item=item,
+                )
         return ops
+
+
+def _operation_summary(operation: BufferOperation) -> dict[str, Any]:
+    return {
+        "target_module_id": operation.target_module_id,
+        "command": operation.command,
+        "params": operation.params.to_dict(),
+    }
+
+
+def _semantic_entry_summary(entry: SemanticEntry) -> dict[str, Any]:
+    return {
+        "target_module_id": entry.target_module_id,
+        "command": entry.command,
+        "semantic_sources": entry.semantic_sources,
+        "semantic_param_leaves": entry.semantic_param_leaves,
+        "meta": entry.meta,
+    }

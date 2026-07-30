@@ -1,8 +1,10 @@
-using System.Text.Json;
 using Harness.Abstractions;
+using Harness.Abstractions.Observability;
 using Harness.Abstractions.Reward;
 using Harness.Core;
+using Harness.Core.Observability;
 using Harness.Host.Options;
+using Harness.Observability;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -16,14 +18,17 @@ public class HarnessRunner(
     IRewardService rewardService,
     DemoScenarioSeeder scenarioSeeder,
     RunArtifactsWriter artifactsWriter,
+    IObservabilityEventSink eventSink,
     IHostApplicationLifetime applicationLifetime,
     IOptions<HarnessOptions> options,
     ILogger<HarnessRunner> logger)
-    : BackgroundService
+    : BackgroundService, IProvideLogger
 {
     private readonly HarnessOptions _options = options.Value;
-    private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web);
 
+    public ILogger Logger => logger;
+
+    [ObserveBoundary]
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
         try
@@ -33,7 +38,30 @@ public class HarnessRunner(
             for (var epoch = 0; epoch < _options.MaxEpochs; epoch++)
             {
                 var session = artifactsWriter.StartRun(epoch);
+                using var epochScope = HarnessExecutionContext.Push(runId: session.RunId, epoch: epoch);
+
+                eventSink.Record(
+                    "epoch.started",
+                    LogLevel.Information,
+                    "Started harness epoch.",
+                    new Dictionary<string, object?>
+                    {
+                        ["scenarioName"] = session.ScenarioName,
+                        ["runId"] = session.RunId
+                    });
+
                 await scenarioSeeder.SeedAsync(ct);
+                eventSink.Record(
+                    "scenario.seeded",
+                    LogLevel.Information,
+                    "Seeded initial scenario state.",
+                    new Dictionary<string, object?>
+                    {
+                        ["goalId"] = _options.Scenario.GoalId,
+                        ["goalStatus"] = _options.Scenario.GoalStatus,
+                        ["workspaceRoot"] = Path.GetFullPath(_options.WorkspaceRoot)
+                    });
+
                 await RunEpochAsync(epoch, session, ct);
             }
         }
@@ -43,6 +71,7 @@ public class HarnessRunner(
         }
     }
 
+    [ObserveBoundary]
     private async Task WaitForDependenciesAsync(CancellationToken cancellationToken)
     {
         var deadline = DateTimeOffset.UtcNow.AddSeconds(_options.StartupTimeoutSeconds);
@@ -74,28 +103,26 @@ public class HarnessRunner(
             lastError);
     }
 
+    [ObserveBoundary]
     private async Task RunEpochAsync(
         int epoch,
         RunArtifactsSession session,
         CancellationToken cancellationToken)
     {
         var stopReason = "max_steps_reached";
-        IReadOnlyList<ModuleSnapshot> finalBuffers = [];
         StepResult? lastResult = null;
         var stepCount = 0;
         var terminated = false;
 
         for (var step = 0; step < _options.MaxStepsPerEpoch && !cancellationToken.IsCancellationRequested; step++)
         {
+            using var stepScope = HarnessExecutionContext.Push(step: step + 1);
+
             var result = await core.StepAsync(cancellationToken);
             lastResult = result;
             stepCount = step + 1;
-
-            await artifactsWriter.AppendStepAsync(session, step, result, cancellationToken);
-            LogStep(epoch, step, result);
-
             stopReason = result.StopReason;
-            finalBuffers = result.BufferStatesAfter;
+
             if (result.IsTerminal)
             {
                 terminated = true;
@@ -103,7 +130,27 @@ public class HarnessRunner(
             }
 
             var reward = await rewardService.ComputeRewardAsync(cancellationToken);
+            eventSink.Record(
+                "reward.computed",
+                LogLevel.Debug,
+                "Computed reward after step execution.",
+                new Dictionary<string, object?>
+                {
+                    ["reward"] = reward,
+                    ["training"] = _options.Training
+                });
+
             await clock.TickAsync(new StepState(reward, _options.Training), cancellationToken);
+            eventSink.Record(
+                "clock.ticked",
+                LogLevel.Debug,
+                "Advanced clock after reward update.",
+                new Dictionary<string, object?>
+                {
+                    ["reward"] = reward,
+                    ["training"] = _options.Training
+                });
+
             await Task.Delay(10, cancellationToken);
         }
 
@@ -112,84 +159,25 @@ public class HarnessRunner(
             stopReason = "max_steps_reached";
         }
 
-        await artifactsWriter.WriteSummaryAsync(
+        eventSink.Record(
+            "epoch.completed",
+            LogLevel.Information,
+            "Completed harness epoch.",
+            new Dictionary<string, object?>
+            {
+                ["epoch"] = epoch,
+                ["totalSteps"] = stepCount,
+                ["stopReason"] = stopReason,
+                ["terminated"] = terminated,
+                ["selectedRuleId"] = lastResult?.SelectedRuleId,
+                ["finalBuffers"] = lastResult?.BufferStatesAfter ?? []
+            });
+
+        await artifactsWriter.WriteArtifactsAsync(
             session,
             stepCount,
             stopReason,
-            finalBuffers,
             lastResult,
             cancellationToken);
-    }
-
-    private void LogStep(int epoch, int step, StepResult result)
-    {
-        if (string.Equals(result.StopReason, "error", StringComparison.OrdinalIgnoreCase))
-        {
-            logger.LogError(
-                "Epoch {Epoch} step {Step}: rule={RuleId}, stop={StopReason}, stage={FailureStage}, errorType={ErrorType}, error={ErrorMessage}, matched={SatisfiedRuleIds}, ops={OperationCount}",
-                epoch,
-                step,
-                result.SelectedRuleId ?? "<none>",
-                result.StopReason,
-                result.FailureStage ?? "<unknown>",
-                result.ErrorType ?? "<unknown>",
-                result.ErrorMessage ?? "<none>",
-                string.Join(", ", result.SatisfiedRuleIds),
-                result.Operations.Count);
-            logger.LogError(
-                "Epoch {Epoch} step {Step} diagnostics={DiagnosticsJson}",
-                epoch,
-                step,
-                SerializeForLog(result.Diagnostics));
-            logger.LogError(
-                "Epoch {Epoch} step {Step} bufferStatesBefore={BufferStatesBeforeJson}",
-                epoch,
-                step,
-                SerializeForLog(result.BufferStatesBefore));
-            logger.LogError(
-                "Epoch {Epoch} step {Step} bufferStatesAfter={BufferStatesAfterJson}",
-                epoch,
-                step,
-                SerializeForLog(result.BufferStatesAfter));
-
-            if (!string.IsNullOrWhiteSpace(result.ErrorDetails))
-            {
-                logger.LogError(
-                    "Epoch {Epoch} step {Step} errorDetails={ErrorDetails}",
-                    epoch,
-                    step,
-                    result.ErrorDetails);
-            }
-
-            return;
-        }
-
-        logger.LogInformation(
-            "Epoch {Epoch} step {Step}: rule={RuleId}, stop={StopReason}, matched={SatisfiedRuleCount}, ops={OperationCount}",
-            epoch,
-            step,
-            result.SelectedRuleId ?? "<none>",
-            result.StopReason,
-            result.SatisfiedRuleIds.Count,
-            result.Operations.Count);
-
-        if (logger.IsEnabled(LogLevel.Debug))
-        {
-            logger.LogDebug(
-                "Epoch {Epoch} step {Step} diagnostics={DiagnosticsJson}",
-                epoch,
-                step,
-                SerializeForLog(result.Diagnostics));
-            logger.LogDebug(
-                "Epoch {Epoch} step {Step} operations={OperationsJson}",
-                epoch,
-                step,
-                SerializeForLog(result.Operations));
-        }
-    }
-
-    private string SerializeForLog(object? value)
-    {
-        return JsonSerializer.Serialize(value, _jsonOptions);
     }
 }

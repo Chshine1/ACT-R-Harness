@@ -1,7 +1,10 @@
 import json
 import logging
-from openai import AsyncOpenAI
 from typing import Any
+
+from openai import AsyncOpenAI
+
+from actr_harness.observability import log_event, observe_boundary
 
 logger = logging.getLogger(__name__)
 
@@ -12,38 +15,47 @@ class LLMClient:
         self._api_key = api_key
         self._base_url = base_url
 
+    @observe_boundary("llm_client.chat_json")
     async def chat_json(self, user_data: Any, system: str) -> Any:
         client = AsyncOpenAI(
             api_key=self._api_key,
             base_url=self._base_url,
         )
-        logger.debug(
-            "Submitting LLM JSON request: model=%s payload_type=%s",
-            self._model,
-            type(user_data).__name__,
+        log_event(
+            logger,
+            logging.DEBUG,
+            "llm.request_submitted",
+            "Submitting LLM JSON request.",
+            model=self._model,
+            payload_type=type(user_data).__name__,
         )
-        try:
-            completion = await client.chat.completions.create(
-                model=self._model,
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": json.dumps(user_data, ensure_ascii=False)}
-                ]
-            )
-        except Exception:
-            logger.exception("LLM JSON request failed for model=%s", self._model)
-            raise
+        completion = await client.chat.completions.create(
+            model=self._model,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": json.dumps(user_data, ensure_ascii=False)}
+            ]
+        )
 
         content = completion.choices[0].message.content
         if content is None:
-            logger.warning("LLM response content was empty for model=%s", self._model)
+            log_event(
+                logger,
+                logging.WARNING,
+                "llm.response_empty",
+                "LLM response content was empty.",
+                model=self._model,
+            )
             return None
         try:
             return json.loads(content)
         except json.JSONDecodeError:
-            logger.warning(
-                "LLM response was not valid JSON for model=%s. Returning raw content preview=%r",
-                self._model,
-                content[:200],
+            log_event(
+                logger,
+                logging.WARNING,
+                "llm.response_invalid_json",
+                "LLM response was not valid JSON.",
+                model=self._model,
+                preview=content[:200],
             )
             return content

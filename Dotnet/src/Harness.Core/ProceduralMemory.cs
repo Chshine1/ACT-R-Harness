@@ -2,11 +2,14 @@ using Google.Protobuf.WellKnownTypes;
 using Harness.Abstractions;
 using Harness.Abstractions.Actr;
 using Harness.Abstractions.Actr.Services;
+using Harness.Abstractions.Observability;
+using Harness.Core.Observability;
+using Harness.Observability;
 using Microsoft.Extensions.Logging;
 
 namespace Harness.Core;
 
-public class ProceduralMemory : IProceduralMemory
+public class ProceduralMemory : IProceduralMemory, IProvideLogger
 {
     private readonly Abstractions.Actr.Services.ProceduralMemory.ProceduralMemoryClient _client;
     private readonly ILogger<ProceduralMemory> _logger;
@@ -26,70 +29,44 @@ public class ProceduralMemory : IProceduralMemory
         };
     }
 
+    public ILogger Logger => _logger;
+
+    [ObserveBoundary]
     public IReadOnlyList<ProceduralCondition> GetAllConditions()
     {
-        _logger.LogInformation("ProceduralMemory.GetAllConditions request");
-
-        try
-        {
-            var response = _client.GetAllConditions(new Empty());
-            _logger.LogInformation(
-                "ProceduralMemory.GetAllConditions response: rules={RuleCount}",
-                response.Conditions.Count);
-            return response.Conditions;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "ProceduralMemory.GetAllConditions failed.");
-            throw;
-        }
+        using var call = GrpcObservabilityCall.Begin("procedural_memory.get_all_conditions");
+        var response = _client.GetAllConditions(new Empty(), headers: call.Headers);
+        return response.Conditions;
     }
 
+    [ObserveBoundary]
     public NeuroAction SelectRule(IReadOnlyList<string> satisfiedRuleIds)
     {
-        _logger.LogInformation(
-            "ProceduralMemory.SelectRule request: candidates={CandidateCount}, ruleIds={CandidateRuleIds}",
-            satisfiedRuleIds.Count,
-            satisfiedRuleIds.ToArray());
+        using var call = GrpcObservabilityCall.Begin("procedural_memory.select_rule");
+        var response = _client.SelectRule(
+            new SelectRuleRequest
+            {
+                SatisfiedRuleIds = { satisfiedRuleIds }
+            },
+            headers: call.Headers
+        );
 
-        try
-        {
-            var response = _client.SelectRule(
-                new SelectRuleRequest
-                {
-                    SatisfiedRuleIds = { satisfiedRuleIds }
-                }
-            );
-
-            _lastRuleId = response.RuleId;
-            _logger.LogInformation(
-                "ProceduralMemory.SelectRule response: selected={RuleId}",
-                response.RuleId);
-            return response;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(
-                ex,
-                "ProceduralMemory.SelectRule failed for candidates={CandidateCount}",
-                satisfiedRuleIds.Count);
-            throw;
-        }
+        _lastRuleId = response.RuleId;
+        return response;
     }
 
+    [ObserveBoundary]
     private async Task LearnUtilityAsync(float reward, CancellationToken cancellationToken = default)
     {
-        _logger.LogDebug(
-            "ProceduralMemory.LearnUtility request: rule={RuleId}, reward={Reward}",
-            _lastRuleId,
-            reward);
-
+        using var call = GrpcObservabilityCall.Begin("procedural_memory.learn_utility");
         await _client.LearnUtilityAsync(
             new LearnUtilityRequest
             {
                 RuleId = _lastRuleId,
                 Reward = reward
-            }, cancellationToken: cancellationToken
+            },
+            headers: call.Headers,
+            cancellationToken: cancellationToken
         );
     }
 }

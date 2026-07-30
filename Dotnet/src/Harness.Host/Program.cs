@@ -1,5 +1,6 @@
 using Grpc.Net.Client;
 using Harness.Abstractions.Actr.Services;
+using Harness.Core.Observability;
 using Harness.Core.Extensions;
 using Harness.Host.Options;
 using JetBrains.Annotations;
@@ -40,6 +41,7 @@ public class Program
                 });
 
                 services.AddHarnessCore();
+                services.AddSingleton<IObservabilityEventSink, StructuredObservabilitySink>();
                 services.AddSingleton<DemoScenarioSeeder>();
                 services.AddSingleton<RunArtifactsWriter>();
                 services.AddHostedService<HarnessRunner>();

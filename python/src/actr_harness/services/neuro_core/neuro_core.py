@@ -8,6 +8,7 @@ from actr_harness.generated.grpc.actr.services import (
     EvaluateConditionsResponse,
     NeuroCoreBase,
 )
+from actr_harness.observability import log_event, observe_boundary
 
 from ..llm_client import LLMClient
 from .action_resolver import ActionResolver
@@ -28,68 +29,57 @@ class NeuroCore(NeuroCoreBase):
                     "OPENAI_BASE_URL."
                 )
             llm_client = LLMClient(model, key, base)
+            model_name = model
+        else:
+            model_name = "injected"
 
-        logger.info("NeuroCore initialized")
         self._llm = llm_client
         self._condition_evaluator = ConditionEvaluator(self._llm)
         self._action_resolver = ActionResolver(self._llm)
+        log_event(
+            logger,
+            logging.INFO,
+            "service.initialized",
+            "NeuroCore initialized.",
+            model=model_name,
+        )
 
+    @observe_boundary("neuro_core.evaluate_conditions")
     async def evaluate_conditions(
             self,
             evaluate_conditions_request: EvaluateConditionsRequest,
     ) -> EvaluateConditionsResponse:
-        logger.info(
-            "EvaluateConditions request: rules=%d buffers=%d",
-            len(evaluate_conditions_request.conditions),
-            len(evaluate_conditions_request.buffer_states),
+        response = await self._condition_evaluator.evaluate(
+            evaluate_conditions_request.conditions,
+            evaluate_conditions_request.buffer_states
         )
-        try:
-            response = await self._condition_evaluator.evaluate(
-                evaluate_conditions_request.conditions,
-                evaluate_conditions_request.buffer_states
-            )
-        except Exception:
-            logger.exception(
-                "EvaluateConditions failed: rules=%d buffers=%d",
-                len(evaluate_conditions_request.conditions),
-                len(evaluate_conditions_request.buffer_states),
-            )
-            raise
-
-        logger.info(
-            "EvaluateConditions response: satisfied=%d rule_ids=%s",
-            len(response.satisfied_rule_ids),
-            response.satisfied_rule_ids,
+        log_event(
+            logger,
+            logging.DEBUG,
+            "rpc.evaluate_conditions.completed",
+            "Completed EvaluateConditions RPC.",
+            rule_count=len(evaluate_conditions_request.conditions),
+            buffer_count=len(evaluate_conditions_request.buffer_states),
+            satisfied_rule_ids=list(response.satisfied_rule_ids),
         )
         return response
 
+    @observe_boundary("neuro_core.decode_action")
     async def decode_action(
             self,
             decode_action_request: DecodeActionRequest,
     ) -> DecodeActionResponse:
-        logger.info(
-            "DecodeAction request: rule=%s buffers=%d schemas=%d commands=%d semantics=%d",
-            decode_action_request.action_intent.rule_id,
-            len(decode_action_request.current_states),
-            len(decode_action_request.schemas),
-            len(decode_action_request.action_intent.commands),
-            len(decode_action_request.action_intent.semantics),
+        response = await self._action_resolver.decode_action(
+            decode_action_request.action_intent,
+            decode_action_request.current_states,
+            decode_action_request.schemas
         )
-        try:
-            response = await self._action_resolver.decode_action(
-                decode_action_request.action_intent,
-                decode_action_request.current_states,
-                decode_action_request.schemas
-            )
-        except Exception:
-            logger.exception(
-                "DecodeAction failed for rule=%s",
-                decode_action_request.action_intent.rule_id,
-            )
-            raise
-
-        logger.info(
-            "DecodeAction response: operations=%d",
-            len(response.operations),
+        log_event(
+            logger,
+            logging.DEBUG,
+            "rpc.decode_action.completed",
+            "Completed DecodeAction RPC.",
+            rule_id=decode_action_request.action_intent.rule_id,
+            operation_count=len(response.operations),
         )
         return response
