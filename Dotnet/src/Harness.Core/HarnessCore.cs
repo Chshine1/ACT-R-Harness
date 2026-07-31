@@ -197,24 +197,29 @@ public class HarnessCore(
                 .Select(ToSnapshot)
                 .ToList();
             var bufferChanges = BufferDiffBuilder.Build(beforeSnapshots, afterSnapshots);
+            var failureData = new Dictionary<string, object?>
+            {
+                ["stopReason"] = "error",
+                ["failureStage"] = currentStage,
+                ["errorSummary"] = ExceptionDetailsFormatter.BuildSummary(ex),
+                ["selectedRuleId"] = selectedRuleId,
+                ["satisfiedRuleIds"] = satisfiedRuleIds,
+                ["operations"] = operationTraces,
+                ["bufferStatesBefore"] = beforeSnapshots,
+                ["bufferStatesAfter"] = afterSnapshots,
+                ["bufferChanges"] = bufferChanges
+            };
+
+            foreach (var entry in ExceptionDetailsFormatter.ToDictionary(ex))
+            {
+                failureData[entry.Key] = entry.Value;
+            }
 
             eventSink.Record(
                 "step.failed",
                 LogLevel.Error,
                 "Step execution failed with an exception.",
-                new Dictionary<string, object?>
-                {
-                    ["stopReason"] = "error",
-                    ["failureStage"] = currentStage,
-                    ["selectedRuleId"] = selectedRuleId,
-                    ["satisfiedRuleIds"] = satisfiedRuleIds,
-                    ["operations"] = operationTraces,
-                    ["bufferStatesBefore"] = beforeSnapshots,
-                    ["bufferStatesAfter"] = afterSnapshots,
-                    ["bufferChanges"] = bufferChanges,
-                    ["errorType"] = ex.GetType().FullName ?? ex.GetType().Name,
-                    ["errorMessage"] = ex.Message
-                });
+                failureData);
 
             return new StepResult(
                 BufferStatesBefore: beforeSnapshots,

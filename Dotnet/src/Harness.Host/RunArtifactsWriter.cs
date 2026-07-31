@@ -147,6 +147,12 @@ public class RunArtifactsWriter(
             }
         }
 
+        var finalFailureEvent = events.LastOrDefault(entry => string.Equals(entry.Name, "step.failed", StringComparison.Ordinal));
+        if (finalFailureEvent is not null)
+        {
+            AppendFailureEvent(lines, finalFailureEvent.Data);
+        }
+
         if (groupedEvents.Count > 0)
         {
             lines.Add(string.Empty);
@@ -170,5 +176,61 @@ public class RunArtifactsWriter(
     {
         var invalid = Path.GetInvalidFileNameChars().ToHashSet();
         return new string(value.Select(ch => invalid.Contains(ch) ? '-' : ch).ToArray());
+    }
+
+    private static void AppendFailureEvent(List<string> lines, IReadOnlyDictionary<string, object?> data)
+    {
+        if (lines.Contains("## Final Error", StringComparer.Ordinal))
+        {
+            return;
+        }
+
+        var failureStage = ReadString(data, "failureStage");
+        var errorType = ReadString(data, "errorType");
+        var errorMessage = ReadString(data, "errorMessage");
+        var errorSummary = ReadString(data, "errorSummary");
+        var errorDetails = ReadString(data, "errorDetails");
+
+        if (string.IsNullOrWhiteSpace(errorSummary) && string.IsNullOrWhiteSpace(errorDetails))
+        {
+            return;
+        }
+
+        lines.Add(string.Empty);
+        lines.Add("## Final Error");
+
+        if (!string.IsNullOrWhiteSpace(failureStage))
+        {
+            lines.Add($"Failure stage: `{failureStage}`");
+        }
+
+        if (!string.IsNullOrWhiteSpace(errorType))
+        {
+            lines.Add($"Error type: `{errorType}`");
+        }
+
+        if (!string.IsNullOrWhiteSpace(errorMessage))
+        {
+            lines.Add($"Message: `{errorMessage}`");
+        }
+
+        if (!string.IsNullOrWhiteSpace(errorSummary))
+        {
+            lines.Add($"Summary: `{errorSummary}`");
+        }
+
+        if (!string.IsNullOrWhiteSpace(errorDetails))
+        {
+            lines.Add("```text");
+            lines.Add(errorDetails);
+            lines.Add("```");
+        }
+    }
+
+    private static string? ReadString(IReadOnlyDictionary<string, object?> data, string key)
+    {
+        return data.TryGetValue(key, out var value)
+            ? value?.ToString()
+            : null;
     }
 }

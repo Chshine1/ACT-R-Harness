@@ -36,6 +36,25 @@ public class StructuredObservabilitySink(ILogger<StructuredObservabilitySink> lo
             queue.Enqueue(entry);
         }
 
+        if (TryGetExceptionDetails(entry.Data, out var errorSummary, out var errorStackTrace))
+        {
+            logger.Log(
+                level,
+                "Event {EventName} runId={RunId} epoch={Epoch} step={Step} correlationId={CorrelationId} operation={Operation} error={ErrorSummary} data={EventData}{NewLine}{ErrorStackTrace}",
+                entry.Name,
+                entry.Context.RunId ?? "<none>",
+                entry.Context.Epoch?.ToString() ?? "<none>",
+                entry.Context.Step?.ToString() ?? "<none>",
+                entry.Context.CorrelationId ?? "<none>",
+                entry.Context.Operation ?? "<none>",
+                errorSummary,
+                ObservabilityFormatter.Summarize(entry.Data),
+                Environment.NewLine,
+                errorStackTrace);
+
+            return;
+        }
+
         logger.Log(
             level,
             "Event {EventName} runId={RunId} epoch={Epoch} step={Step} correlationId={CorrelationId} operation={Operation} data={EventData}",
@@ -46,6 +65,21 @@ public class StructuredObservabilitySink(ILogger<StructuredObservabilitySink> lo
             entry.Context.CorrelationId ?? "<none>",
             entry.Context.Operation ?? "<none>",
             ObservabilityFormatter.Summarize(entry.Data));
+    }
+
+    private static bool TryGetExceptionDetails(
+        IReadOnlyDictionary<string, object?> data,
+        out string errorSummary,
+        out string errorStackTrace)
+    {
+        errorSummary = data.TryGetValue("errorSummary", out var summaryValue)
+            ? summaryValue?.ToString() ?? string.Empty
+            : string.Empty;
+        errorStackTrace = data.TryGetValue("errorStackTrace", out var stackTraceValue)
+            ? stackTraceValue?.ToString() ?? string.Empty
+            : string.Empty;
+
+        return !string.IsNullOrWhiteSpace(errorSummary) || !string.IsNullOrWhiteSpace(errorStackTrace);
     }
 
     public IReadOnlyList<HarnessEvent> GetEvents(string runId)

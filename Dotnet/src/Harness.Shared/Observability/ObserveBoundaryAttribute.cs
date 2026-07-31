@@ -88,11 +88,13 @@ public sealed class ObserveBoundaryAttribute : OnMethodBoundaryAspect
 
         if (_logger.IsEnabled(LogLevel.Error))
         {
+            var exceptionSummary = ExceptionDetailsFormatter.BuildSummary(exception);
             _logger.LogError(
                 exception,
-                "Boundary error {Boundary} elapsedMs={ElapsedMs}",
+                "Boundary error {Boundary} elapsedMs={ElapsedMs} error={ErrorSummary}",
                 GetBoundaryName(),
-                elapsedMs);
+                elapsedMs,
+                exceptionSummary);
         }
 
         _activity?.SetStatus(ActivityStatusCode.Error, exception.Message);
