@@ -1,4 +1,4 @@
-﻿using Google.Protobuf.WellKnownTypes;
+using Google.Protobuf.WellKnownTypes;
 using Harness.Abstractions;
 using Harness.Abstractions.Actr;
 using Harness.Abstractions.Actr.Services;
@@ -42,17 +42,17 @@ public record AddChunkRequest(string Id, Struct Slots) : IStructRepresentable<Ad
 public class DeclarativeMemoryModule : ModuleBase
 {
     private const double DefaultDeltaTimeSeconds = 60.0;
-    private readonly DeclarativeMemory.DeclarativeMemoryClient _client;
+    private readonly DeclarativeMemoryService _memoryService;
     private readonly Func<IReadOnlyCollection<IModule>> _moduleProvider;
     private MemoryChunk? _lastRetrieved;
     private readonly HashSet<string> _knownSlotKeys = [];
 
     public DeclarativeMemoryModule(
-        DeclarativeMemory.DeclarativeMemoryClient client,
+        DeclarativeMemoryService memoryService,
         IClock clock,
         Func<IReadOnlyCollection<IModule>> moduleProvider)
     {
-        _client = client;
+        _memoryService = memoryService;
         _moduleProvider = moduleProvider;
         clock.OnTickAsync += OnTickAsync;
     }
@@ -109,7 +109,7 @@ public class DeclarativeMemoryModule : ModuleBase
             _knownSlotKeys.Add(slot.Key);
         }
 
-        _client.AddChunk(new Harness.Abstractions.Actr.Services.AddChunkRequest { Chunk = chunk });
+        _memoryService.AddChunk(new Harness.Abstractions.Actr.Services.AddChunkRequest { Chunk = chunk });
     }
 
     [ModuleCommand("retrieve_chunk")]
@@ -121,7 +121,7 @@ public class DeclarativeMemoryModule : ModuleBase
             rpcRequest.Cue.Add(field.Key, field.Value.StringValue);
         }
 
-        var response = _client.Retrieve(rpcRequest);
+        var response = _memoryService.Retrieve(rpcRequest);
         _lastRetrieved = response.Chunk;
     }
 
@@ -140,7 +140,7 @@ public class DeclarativeMemoryModule : ModuleBase
             BufferSnapshots = snapshots
         };
 
-        await _client.TickMemoryAsync(request, cancellationToken: cancellationToken);
+        await _memoryService.TickMemoryAsync(request, cancellationToken);
     }
 
     private static double Now()

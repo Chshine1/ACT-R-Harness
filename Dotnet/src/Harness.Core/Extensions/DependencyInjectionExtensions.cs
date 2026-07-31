@@ -2,7 +2,9 @@ using Harness.Abstractions;
 using Harness.Abstractions.Modules;
 using Harness.Abstractions.Reward;
 using Harness.Codebase.Modules;
+using Harness.Core.Rules;
 using Harness.Core.Modules;
+using Harness.Core.NeuroCore;
 using JetBrains.Annotations;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -26,6 +28,13 @@ public static class DependencyInjectionExtensions
             services.AddSingleton<IRewardService, MockRewardService>();
             services.AddSingleton<IClock, StepClock>();
             services.AddSingleton<IEmbeddingService, DeterministicEmbeddingService>();
+            services.AddSingleton<RulesLoader>();
+            services.AddSingleton<DeclarativeMemoryService>();
+            services.AddSingleton<LlmClient>();
+            services.AddSingleton<SymbolicMatcher>();
+            services.AddSingleton<FuzzyConditionEvaluator>();
+            services.AddSingleton<ConditionEvaluator>();
+            services.AddSingleton<ActionResolver>();
             services.AddSingleton<Func<IReadOnlyCollection<IModule>>>(sp =>
                 () => sp.GetRequiredService<IModuleRegistry>().GetModules());
 
@@ -47,7 +56,7 @@ public static class DependencyInjectionExtensions
             });
 
             services.AddSingleton<IProceduralMemory, ProceduralMemory>();
-            services.AddSingleton<INeuroCore, NeuroCore>();
+            services.AddSingleton<INeuroCore, NeuroCore.NeuroCore>();
             services.AddSingleton<HarnessCore>();
 
             return services;

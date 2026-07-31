@@ -5,7 +5,8 @@
 ## Runnable Demo
 
 The minimal runnable slice in this repository is the codebase-navigation demo driven by the three active rules in
-`shared/ruleset/lab.yml`.
+`shared/ruleset/lab.yml`. The former Python services have been ported into the .NET host, so the demo now runs fully
+in-process on the .NET side while still using the shared protobuf contracts and ruleset.
 
 Required environment variables:
 
@@ -27,8 +28,8 @@ docker compose up --build harness-dotnet-miss
 
 Both runs write artifacts to `./artifacts`, including `trace.jsonl` and `summary.md`.
 
-Set `LOG_LEVEL=DEBUG` on the Python service when you want payload-level tracing for condition evaluation, rule
-selection, and action decoding in addition to the host-side step diagnostics.
+Set `Logging__LogLevel__Default=Debug` on the .NET host when you want payload-level tracing for condition evaluation,
+rule selection, and action decoding in addition to the step diagnostics.
 
 ## 1. System Description
 
@@ -39,8 +40,8 @@ ambiguous, high‑level concepts and the structured symbolic operations that the
 ### 1.1 Core Components
 
 **Procedural Core (NeuroCore)**  
-A gRPC service that evaluates production rules against current buffer states and decodes action intents into sequences
-of buffer operations. It exports two main endpoints:
+An in-process .NET component that evaluates production rules against current buffer states and decodes action intents
+into sequences of buffer operations. It exposes two main operations:
 
 - `EvaluateConditions`: Given buffer snapshots and a set of procedural conditions (each with a rule ID, a symbolic
   condition tree, and an optional semantic hint), returns the set of rule IDs whose conditions are currently satisfied.
@@ -208,7 +209,7 @@ stochastically.
 aim to produce publishable evidence that a neuro‑symbolic middleware can overcome fundamental limitations of monolithic
 LLM agents in long‑horizon, interpretable, and safe autonomous systems.*
 
-## Getting Started
+## Reference Python Implementation
 
 ### Prerequisites
 
@@ -232,6 +233,9 @@ pixi run -e dev python main.py
 
 (You may need to create a simple `main.py` that assembles the agent and runs a few
 episodes.)
+
+The `python/` directory is retained as a reference implementation and testbed, but the runnable harness path in this
+repository no longer depends on it.
 
 ## Contributing
 

@@ -18,4 +18,5 @@ RUN dotnet publish "src/Harness.Host/Harness.Host.csproj" -c $BUILD_CONFIGURATIO
 FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
+COPY --from=build /src/shared /src/shared
 ENTRYPOINT ["dotnet", "Harness.Host.dll"]

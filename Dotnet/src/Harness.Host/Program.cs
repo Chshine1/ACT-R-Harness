@@ -1,12 +1,10 @@
-using Grpc.Net.Client;
-using Harness.Abstractions.Actr.Services;
+using Harness.Core.Configuration;
 using Harness.Core.Observability;
 using Harness.Core.Extensions;
 using Harness.Host.Options;
 using JetBrains.Annotations;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Options;
 
 namespace Harness.Host;
 
@@ -18,27 +16,10 @@ public class Program
         var host = Microsoft.Extensions.Hosting.Host.CreateDefaultBuilder(args)
             .ConfigureServices((context, services) =>
             {
-                services.Configure<GrpcClientsOptions>(context.Configuration.GetSection(GrpcClientsOptions.Section));
                 services.Configure<HarnessOptions>(context.Configuration.GetSection(HarnessOptions.Section));
-
-                services.AddSingleton(sp =>
-                {
-                    var opts = sp.GetRequiredService<IOptions<GrpcClientsOptions>>().Value;
-                    var channel = GrpcChannel.ForAddress(opts.DeclarativeMemoryAddress);
-                    return new DeclarativeMemory.DeclarativeMemoryClient(channel);
-                });
-                services.AddSingleton(sp =>
-                {
-                    var opts = sp.GetRequiredService<IOptions<GrpcClientsOptions>>().Value;
-                    var channel = GrpcChannel.ForAddress(opts.ProceduralMemoryAddress);
-                    return new ProceduralMemory.ProceduralMemoryClient(channel);
-                });
-                services.AddSingleton(sp =>
-                {
-                    var opts = sp.GetRequiredService<IOptions<GrpcClientsOptions>>().Value;
-                    var channel = GrpcChannel.ForAddress(opts.NeuroCoreAddress);
-                    return new NeuroCore.NeuroCoreClient(channel);
-                });
+                services.Configure<ProceduralMemoryOptions>(context.Configuration.GetSection(ProceduralMemoryOptions.Section));
+                services.Configure<DeclarativeMemoryOptions>(context.Configuration.GetSection(DeclarativeMemoryOptions.Section));
+                services.Configure<LlmClientOptions>(context.Configuration.GetSection(LlmClientOptions.Section));
 
                 services.AddHarnessCore();
                 services.AddSingleton<IObservabilityEventSink, StructuredObservabilitySink>();

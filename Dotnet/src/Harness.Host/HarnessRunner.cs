@@ -71,35 +71,17 @@ public class HarnessRunner(
     }
 
     [ObserveBoundary]
-    private async Task WaitForDependenciesAsync(CancellationToken cancellationToken)
+    private Task WaitForDependenciesAsync(CancellationToken cancellationToken)
     {
-        var deadline = DateTimeOffset.UtcNow.AddSeconds(_options.StartupTimeoutSeconds);
-        Exception? lastError = null;
-
-        while (DateTimeOffset.UtcNow < deadline && !cancellationToken.IsCancellationRequested)
+        cancellationToken.ThrowIfCancellationRequested();
+        var conditions = proceduralMemory.GetAllConditions();
+        if (conditions.Count == 0)
         {
-            try
-            {
-                var conditions = proceduralMemory.GetAllConditions();
-                if (conditions.Count == 0)
-                {
-                    throw new InvalidOperationException("Procedural memory returned zero rules.");
-                }
-
-                logger.LogInformation("Connected to Python services. Loaded {RuleCount} rules.", conditions.Count);
-                return;
-            }
-            catch (Exception ex)
-            {
-                lastError = ex;
-                logger.LogInformation("Waiting for Python services: {Message}", ex.Message);
-                await Task.Delay(1000, cancellationToken);
-            }
+            throw new InvalidOperationException("Procedural memory returned zero rules.");
         }
 
-        throw new TimeoutException(
-            $"Timed out after {_options.StartupTimeoutSeconds} seconds waiting for Python services.",
-            lastError);
+        logger.LogInformation("Initialized in-process .NET services. Loaded {RuleCount} rules.", conditions.Count);
+        return Task.CompletedTask;
     }
 
     [ObserveBoundary]

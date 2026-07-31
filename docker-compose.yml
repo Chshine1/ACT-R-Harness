@@ -1,33 +1,19 @@
 services:
-  python-services:
+  harness-dotnet:
     build:
       context: .
-      dockerfile: python/Dockerfile
+      dockerfile: Dotnet/Dockerfile
     environment:
-      LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+      ASPNETCORE_ENVIRONMENT: Development
       TEMPERATURE: "0.0"
       LEARNING_RATE: "0.1"
       DECLARATIVE_MEMORY_NOISE_SD: "0.0"
       DEFAULT_RULE_UTILITY: "0.0"
       PROCEDURAL_RANDOM_SEED: "7"
-      RULESET_PATH: "/app/shared/ruleset/lab.yml"
+      RULESET_PATH: "/workspace/shared/ruleset/lab.yml"
       NEURO_LLM_MODEL: "${NEURO_LLM_MODEL:?Set NEURO_LLM_MODEL}"
       OPENAI_API_KEY: "${OPENAI_API_KEY:?Set OPENAI_API_KEY}"
       OPENAI_BASE_URL: "${OPENAI_BASE_URL:?Set OPENAI_BASE_URL}"
-    ports:
-      - "50051:50051"
-
-  harness-dotnet:
-    build:
-      context: .
-      dockerfile: Dotnet/Dockerfile
-    depends_on:
-      - python-services
-    environment:
-      ASPNETCORE_ENVIRONMENT: Development
-      GrpcClients__DeclarativeMemoryAddress: "http://python-services:50051"
-      GrpcClients__ProceduralMemoryAddress: "http://python-services:50051"
-      GrpcClients__NeuroCoreAddress: "http://python-services:50051"
       Harness__Training: "false"
       Harness__MaxEpochs: "1"
       Harness__MaxStepsPerEpoch: "8"
@@ -52,13 +38,17 @@ services:
     build:
       context: .
       dockerfile: Dotnet/Dockerfile
-    depends_on:
-      - python-services
     environment:
       ASPNETCORE_ENVIRONMENT: Development
-      GrpcClients__DeclarativeMemoryAddress: "http://python-services:50051"
-      GrpcClients__ProceduralMemoryAddress: "http://python-services:50051"
-      GrpcClients__NeuroCoreAddress: "http://python-services:50051"
+      TEMPERATURE: "0.0"
+      LEARNING_RATE: "0.1"
+      DECLARATIVE_MEMORY_NOISE_SD: "0.0"
+      DEFAULT_RULE_UTILITY: "0.0"
+      PROCEDURAL_RANDOM_SEED: "7"
+      RULESET_PATH: "/workspace/shared/ruleset/lab.yml"
+      NEURO_LLM_MODEL: "${NEURO_LLM_MODEL:?Set NEURO_LLM_MODEL}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:?Set OPENAI_API_KEY}"
+      OPENAI_BASE_URL: "${OPENAI_BASE_URL:?Set OPENAI_BASE_URL}"
       Harness__Training: "false"
       Harness__MaxEpochs: "1"
       Harness__MaxStepsPerEpoch: "8"

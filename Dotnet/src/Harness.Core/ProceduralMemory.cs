@@ -1,29 +1,58 @@
-using Google.Protobuf.WellKnownTypes;
 using Harness.Abstractions;
 using Harness.Abstractions.Actr;
-using Harness.Abstractions.Actr.Services;
-using Harness.Core.Observability;
+using Harness.Core.Configuration;
+using Harness.Core.Rules;
 using Harness.Shared.Observability;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Harness.Core;
 
 public class ProceduralMemory : IProceduralMemory, IProvideLogger
 {
-    private readonly Abstractions.Actr.Services.ProceduralMemory.ProceduralMemoryClient _client;
+    private sealed class RuleState
+    {
+        public required string Id { get; init; }
+        public required ProceduralCondition Condition { get; init; }
+        public required NeuroAction Action { get; init; }
+        public required double Utility { get; set; }
+    }
+
+    private readonly Dictionary<string, RuleState> _rules;
     private readonly ILogger<ProceduralMemory> _logger;
+    private readonly double _temperature;
+    private readonly double _learningRate;
+    private readonly Random _random;
     private string? _lastRuleId;
 
     public ProceduralMemory(
-        Abstractions.Actr.Services.ProceduralMemory.ProceduralMemoryClient client,
+        RulesLoader rulesLoader,
+        IOptions<ProceduralMemoryOptions> options,
         IClock clock,
         ILogger<ProceduralMemory> logger)
     {
-        _client = client;
         _logger = logger;
+        _temperature = options.Value.Temperature;
+        _learningRate = options.Value.LearningRate;
+        _random = new Random(options.Value.RandomSeed);
+        _rules = rulesLoader.LoadRules().ToDictionary(
+            pair => pair.Key,
+            pair => new RuleState
+            {
+                Id = pair.Value.Id,
+                Condition = pair.Value.Condition.Clone(),
+                Action = pair.Value.Action.Clone(),
+                Utility = pair.Value.Utility
+            },
+            StringComparer.Ordinal);
+
         clock.OnTickAsync += (reward, ct) =>
         {
-            if (!reward.Training) return Task.CompletedTask;
+            if (!reward.Training)
+            {
+                return Task.CompletedTask;
+            }
+
             return _lastRuleId == null ? throw new InvalidOperationException() : LearnUtilityAsync(reward.Reward, ct);
         };
     }
@@ -33,39 +62,74 @@ public class ProceduralMemory : IProceduralMemory, IProvideLogger
     [ObserveBoundary]
     public IReadOnlyList<ProceduralCondition> GetAllConditions()
     {
-        using var call = GrpcObservabilityCall.Begin("procedural_memory.get_all_conditions");
-        var response = _client.GetAllConditions(new Empty(), headers: call.Headers);
-        return response.Conditions;
+        return _rules.Values
+            .Select(rule => rule.Condition.Clone())
+            .ToList();
     }
 
     [ObserveBoundary]
     public NeuroAction SelectRule(IReadOnlyList<string> satisfiedRuleIds)
     {
-        using var call = GrpcObservabilityCall.Begin("procedural_memory.select_rule");
-        var response = _client.SelectRule(
-            new SelectRuleRequest
-            {
-                SatisfiedRuleIds = { satisfiedRuleIds }
-            },
-            headers: call.Headers
-        );
+        var applicableRules = _rules.Values
+            .Where(rule => satisfiedRuleIds.Contains(rule.Id, StringComparer.Ordinal))
+            .ToList();
 
-        _lastRuleId = response.RuleId;
-        return response;
+        if (applicableRules.Count == 0)
+        {
+            throw new InvalidOperationException(
+                $"No applicable rule found for satisfied_rule_ids=[{string.Join(", ", satisfiedRuleIds)}].");
+        }
+
+        RuleState selectedRule;
+        if (_temperature <= 0)
+        {
+            selectedRule = applicableRules
+                .OrderByDescending(rule => rule.Utility)
+                .ThenBy(rule => rule.Id, StringComparer.Ordinal)
+                .First();
+        }
+        else
+        {
+            var maxUtility = applicableRules.Max(rule => rule.Utility);
+            var weightedRules = applicableRules
+                .Select(rule => new
+                {
+                    Rule = rule,
+                    Weight = Math.Exp((rule.Utility - maxUtility) / _temperature)
+                })
+                .ToList();
+
+            var weightSum = weightedRules.Sum(item => item.Weight);
+            var sample = _random.NextDouble() * weightSum;
+            var cumulative = 0.0;
+            selectedRule = weightedRules[^1].Rule;
+
+            foreach (var weightedRule in weightedRules)
+            {
+                cumulative += weightedRule.Weight;
+                if (sample <= cumulative)
+                {
+                    selectedRule = weightedRule.Rule;
+                    break;
+                }
+            }
+        }
+
+        _lastRuleId = selectedRule.Id;
+        return selectedRule.Action.Clone();
     }
 
     [ObserveBoundary]
     private async Task LearnUtilityAsync(float reward, CancellationToken cancellationToken = default)
     {
-        using var call = GrpcObservabilityCall.Begin("procedural_memory.learn_utility");
-        await _client.LearnUtilityAsync(
-            new LearnUtilityRequest
-            {
-                RuleId = _lastRuleId,
-                Reward = reward
-            },
-            headers: call.Headers,
-            cancellationToken: cancellationToken
-        );
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (_lastRuleId is null || !_rules.TryGetValue(_lastRuleId, out var rule))
+        {
+            return;
+        }
+
+        rule.Utility += _learningRate * (reward - rule.Utility);
+        await Task.CompletedTask;
     }
 }
