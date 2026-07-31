@@ -33,7 +33,7 @@ def configure_logging(level: int) -> None:
 def attach_grpc_observability(server: Any) -> None:
     from grpclib.events import RecvRequest, listen
 
-    def on_recv_request(event: Any) -> None:
+    async def on_recv_request(event: Any) -> None:
         method_name = cast(str, getattr(event, "method_name", "<grpc>"))
         metadata = getattr(event, "metadata", None)
         original_method = event.method_func
