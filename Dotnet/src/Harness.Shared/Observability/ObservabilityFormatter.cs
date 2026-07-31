@@ -19,7 +19,8 @@ public static class ObservabilityFormatter
         return value switch
         {
             string text => text.Length <= 160 ? text : $"{text[..157]}...",
-            bool or byte or sbyte or short or ushort or int or uint or long or ulong or float or double or decimal => value,
+            bool or byte or sbyte or short or ushort or int or uint or long or ulong or float or double
+                or decimal => value,
             Enum => value.ToString(),
             IDictionary dictionary => SummarizeDictionary(dictionary, depth),
             IEnumerable enumerable and not string => SummarizeEnumerable(enumerable, depth),
@@ -36,9 +37,27 @@ public static class ObservabilityFormatter
     {
         var entries = new Dictionary<string, object?>();
         var index = 0;
-        foreach (var entry in dictionary.Cast<DictionaryEntry>().TakeWhile(_ => index < 8))
+
+        foreach (var key in dictionary.Keys)
         {
-            entries[entry.Key.ToString() ?? "<null>"] = Summarize(entry.Value, depth + 1);
+            if (index >= 8) break;
+            if (key is null)
+            {
+                continue;
+            }
+
+            var keyString = key.ToString() ?? "<null>";
+            object? value;
+            try
+            {
+                value = dictionary[key];
+            }
+            catch
+            {
+                value = "<error>";
+            }
+
+            entries[keyString] = Summarize(value, depth + 1);
             index++;
         }
 
