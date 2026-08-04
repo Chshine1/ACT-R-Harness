@@ -5,6 +5,7 @@ using Harness.Host.Options;
 using JetBrains.Annotations;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 namespace Harness.Host;
 
@@ -14,6 +15,11 @@ public class Program
     public static void Main(string[] args)
     {
         var host = Microsoft.Extensions.Hosting.Host.CreateDefaultBuilder(args)
+            .ConfigureLogging(logging =>
+            {
+                logging.ClearProviders();
+                logging.AddJsonConsole();
+            })
             .ConfigureServices((context, services) =>
             {
                 services.Configure<HarnessOptions>(context.Configuration.GetSection(HarnessOptions.Section));

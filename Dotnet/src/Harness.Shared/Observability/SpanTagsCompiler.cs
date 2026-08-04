@@ -7,14 +7,45 @@ using System.Text.Json.Serialization;
 
 namespace Harness.Shared.Observability;
 
+/// <summary>
+/// Compiles tag definitions into efficient setter delegates to avoid runtime parsing and reflection.
+/// </summary>
 public interface ISpanTagsCompiler
 {
+    // ReSharper disable once InvalidXmlDocComment
+    /// <summary>
+    /// Compiles all tag definitions for a given method into a single <see cref="Action{Activity, object?[]}"/>
+    /// that sets tags on the provided <see cref="Activity"/> using the arguments array.
+    /// </summary>
+    /// <param name="method">The target method for which the tags are being compiled.</param>
+    /// <param name="tagDefs">Array of tag definitions following the supported syntax.</param>
+    /// <returns>A compiled delegate that sets all tags when invoked with an <see cref="Activity"/> and an array of method arguments.</returns>
     Action<Activity, object?[]> CompileAllTags(MethodBase method, string[] tagDefs);
 }
 
+// ReSharper disable GrammarMistakeInComment
+/// <summary>
+/// Default implementation of <see cref="ISpanTagsCompiler"/> that compiles tag definitions into expression trees.
+/// </summary>
+/// <remarks>
+/// <para>Supported tag definition syntax:</para>
+/// <list type="bullet">
+///   <item><c>"key = 'constant string'"</c> – sets a constant string value (support \' escaping).</item>
+///   <item><c>"key = null"</c>, <c>"true"</c>, <c>"false"</c>, integer, or floating-point literal.</item>
+///   <item><c>"key = {parameter}"</c> – takes the value of a method parameter.</item>
+///   <item><c>"key = {parameter.Property.Nested}"</c> – navigates a property chain on the parameter.</item>
+///   <item><c>"key ?= expression"</c> – makes the tag optional; it is only set if the resolved value is not null.</item>
+///   <item>Append <c>" as json"</c> to any expression to serialize the value to JSON using the configured options.</item>
+/// </list>
+/// <para>
+/// Note that JSON serialization uses <see cref="JsonSerializerOptions"/> with <see cref="System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping"/>,
+/// which may not escape characters like &lt;, &gt;, &amp;. Ensure the consuming system safely handles such output if it might be rendered in HTML contexts.
+/// </para>
+/// </remarks>
+// ReSharper restore GrammarMistakeInComment
 public class SpanTagsCompiler : ISpanTagsCompiler
 {
-    private readonly JsonSerializerOptions? _jsonSerializerOptions =  new(JsonSerializerDefaults.Web)
+    private readonly JsonSerializerOptions? _jsonSerializerOptions = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = false,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
@@ -33,6 +64,9 @@ public class SpanTagsCompiler : ISpanTagsCompiler
         public bool IsConstant;
     }
 
+    /// <summary>
+    /// Parses a single tag definition and resolves parameter names against the given parameter list.
+    /// </summary>
     private static TagSpec ParseTag(string definition, ParameterInfo[] parameters)
     {
         if (string.IsNullOrWhiteSpace(definition)) throw new FormatException("Label definition cannot be empty");
@@ -167,6 +201,7 @@ public class SpanTagsCompiler : ISpanTagsCompiler
         };
     }
 
+    /// <inheritdoc />
     public Action<Activity, object?[]> CompileAllTags(MethodBase method, string[] tagDefs)
     {
         var parameters = method.GetParameters();
@@ -177,7 +212,6 @@ public class SpanTagsCompiler : ISpanTagsCompiler
         foreach (var t in tagDefs)
         {
             var spec = ParseTag(t, parameters);
-
             var valueExpr = BuildValueExpression(spec, parameters, argsParam);
 
             if (spec.IsOptional)
