@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Text.Json;
 
 namespace Harness.Shared.Observability;
 
@@ -6,15 +7,11 @@ public static class ObservabilityFormatter
 {
     public static object? Summarize(object? value, int depth = 0)
     {
-        if (value is null)
-        {
-            return null;
-        }
+        if (value is null) return null;
+        if (depth >= 3) return value.GetType().Name;
 
-        if (depth >= 3)
-        {
-            return value.GetType().Name;
-        }
+        if (value is JsonElement je)
+            return SummarizeJsonElement(je, depth);
 
         return value switch
         {
@@ -24,12 +21,47 @@ public static class ObservabilityFormatter
             Enum => value.ToString(),
             IDictionary dictionary => SummarizeDictionary(dictionary, depth),
             IEnumerable enumerable and not string => SummarizeEnumerable(enumerable, depth),
-            Exception ex => new
-            {
-                type = ex.GetType().FullName ?? ex.GetType().Name,
-                ex.Message
-            },
+            Exception ex => new { type = ex.GetType().FullName ?? ex.GetType().Name, ex.Message },
             _ => value.GetType().Name
+        };
+    }
+
+    private static object? SummarizeJsonElement(JsonElement element, int depth) => element.ValueKind switch
+    {
+        JsonValueKind.Null => null,
+        JsonValueKind.True => true,
+        JsonValueKind.False => false,
+        JsonValueKind.String => Summarize(element.GetString(), depth + 1),
+        JsonValueKind.Number => element.TryGetInt64(out var l) ? l : element.GetDouble(),
+        JsonValueKind.Array => SummarizeJsonArray(element, depth),
+        JsonValueKind.Object => SummarizeJsonObject(element, depth),
+        _ => element.GetRawText()
+    };
+
+    private static Dictionary<string, object?> SummarizeJsonObject(JsonElement element, int depth)
+    {
+        var dict = new Dictionary<string, object?>();
+        var count = 0;
+        foreach (var prop in element.EnumerateObject().TakeWhile(_ => count++ < 8))
+        {
+            dict[prop.Name] = SummarizeJsonElement(prop.Value, depth + 1);
+        }
+
+        if (element.GetPropertyCount() > count)
+            dict["_truncated"] = element.GetPropertyCount() - count;
+        return dict;
+    }
+
+    private static Dictionary<string, object?> SummarizeJsonArray(JsonElement element, int depth)
+    {
+        var total = element.GetArrayLength();
+        var previewCount = 0;
+        var items = element.EnumerateArray().TakeWhile(_ => previewCount++ < 6)
+            .Select(item => SummarizeJsonElement(item, depth + 1)).ToList();
+        return new Dictionary<string, object?>
+        {
+            ["count"] = total,
+            ["preview"] = items
         };
     }
 

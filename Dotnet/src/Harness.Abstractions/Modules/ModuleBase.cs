@@ -29,7 +29,7 @@ public abstract class ModuleBase : IModule, IProvideLogger
     private static Dictionary<string, CommandCache> BuildCommandMap(Type moduleType)
     {
         var map = new Dictionary<string, CommandCache>();
-        var methods = moduleType.GetMethods(BindingFlags.NonPublic | BindingFlags.Instance);
+        var methods = moduleType.GetMethods(BindingFlags.Instance);
 
         foreach (var method in methods)
         {
@@ -37,9 +37,6 @@ public abstract class ModuleBase : IModule, IProvideLogger
             if (attr is null) continue;
 
             var parameters = method.GetParameters();
-            if (parameters.Length > 1)
-                throw new InvalidOperationException(
-                    $"Method {method.Name} in {moduleType.Name} has more than one parameter.");
 
             var moduleParam = Expression.Parameter(typeof(IModule));
             var structParam = Expression.Parameter(typeof(Struct));
@@ -48,16 +45,17 @@ public abstract class ModuleBase : IModule, IProvideLogger
             string schema;
             switch (parameters.Length)
             {
-                case > 1:
-                    throw new InvalidOperationException();
+                case > 1 or < 0:
+                    throw new InvalidOperationException(
+                        $"Method {method.Name} in {moduleType.Name} has neither 0 (no params) nor 1 (a Struct for all params) parameters.");
                 case 0:
                     call = Expression.Call(Expression.Convert(moduleParam, moduleType), method);
                     schema = "{}";
                     break;
                 default:
-                {
                     var paramType = parameters[0].ParameterType;
-                    var fromStruct = paramType.GetMethod("FromStruct", BindingFlags.Public | BindingFlags.Static);
+                    var fromStruct = paramType.GetMethod(nameof(IStructRepresentable<>.FromStruct),
+                        BindingFlags.Public | BindingFlags.Static);
                     if (fromStruct is null)
                         throw new InvalidOperationException(
                             $"Parameter type {paramType.Name} must implement IStructRepresentable<> with static FromStruct.");
@@ -72,7 +70,6 @@ public abstract class ModuleBase : IModule, IProvideLogger
                     var deserialized = Expression.Call(fromStruct, structParam);
                     call = Expression.Call(Expression.Convert(moduleParam, moduleType), method, deserialized);
                     break;
-                }
             }
 
             var lambda = Expression.Lambda<Action<IModule, Struct?>>(call, moduleParam, structParam);

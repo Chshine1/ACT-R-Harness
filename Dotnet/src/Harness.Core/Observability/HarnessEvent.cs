@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 
 namespace Harness.Core.Observability;
@@ -15,7 +16,7 @@ public sealed record HarnessEvent(
     LogLevel Level,
     string Message,
     HarnessEventContext Context,
-    IReadOnlyDictionary<string, object?> Data);
+    JsonElement? Data);
 
 public interface IObservabilityEventSink
 {
@@ -23,7 +24,7 @@ public interface IObservabilityEventSink
         string name,
         LogLevel level,
         string message,
-        IReadOnlyDictionary<string, object?>? data = null);
+        object? data = null);
 
     IReadOnlyList<HarnessEvent> GetEvents(string runId);
 

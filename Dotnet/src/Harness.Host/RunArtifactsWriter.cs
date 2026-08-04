@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using Harness.Core;
 using Harness.Core.Observability;
@@ -10,7 +11,6 @@ namespace Harness.Host;
 
 public sealed record RunArtifactsSession(
     string RunId,
-    string RunDirectory,
     string TracePath,
     string SummaryPath,
     string ScenarioName,
@@ -33,18 +33,18 @@ public class RunArtifactsWriter(
         var artifactRoot = Path.GetFullPath(_options.ArtifactRoot);
         Directory.CreateDirectory(artifactRoot);
 
+        // ReSharper disable once StringLiteralTypo
         var timestamp = DateTimeOffset.UtcNow.ToString("yyyyMMddTHHmmssfffZ");
-        var scenarioName = SanitizePathSegment(_options.Scenario.Name);
+        var scenarioName = SanitizePathSegment(_options.ScenarioName);
         var runId = $"{timestamp}-{scenarioName}-epoch{epoch:D2}";
         var runDirectory = Path.Combine(artifactRoot, runId);
         Directory.CreateDirectory(runDirectory);
 
         return new RunArtifactsSession(
             runId,
-            runDirectory,
             Path.Combine(runDirectory, "trace.jsonl"),
             Path.Combine(runDirectory, "summary.md"),
-            _options.Scenario.Name,
+            _options.ScenarioName,
             epoch);
     }
 
@@ -110,127 +110,127 @@ public class RunArtifactsWriter(
             .Select(group => $"- `{group.Key}`: {group.Count()}")
             .ToList();
 
-        var lines = new List<string>
-        {
-            "# Run Summary",
-            string.Empty,
-            $"Scenario: `{session.ScenarioName}`",
-            $"Run ID: `{session.RunId}`",
-            $"Epoch: `{session.Epoch}`",
-            $"Finished (UTC): `{DateTimeOffset.UtcNow:O}`",
-            $"Total steps: `{totalSteps}`",
-            $"Stop reason: `{stopReason}`",
-            $"Recorded events: `{events.Count}`"
-        };
+        var sb = new StringBuilder();
+
+        sb.Append($"""
+                   # Run Summary
+
+                   Scenario: `{session.ScenarioName}`
+                   Run ID: `{session.RunId}`
+                   Epoch: `{session.Epoch}`
+                   Finished (UTC): `{DateTimeOffset.UtcNow:O}`
+                   Total steps: `{totalSteps}`
+                   Stop reason: `{stopReason}`
+                   Recorded events: `{events.Count}`
+
+                   """);
 
         if (lastResult is not null)
         {
-            lines.Add($"Last selected rule: `{lastResult.SelectedRuleId ?? "<none>"}`");
-            lines.Add($"Matched rules: `{string.Join(", ", lastResult.SatisfiedRuleIds)}`");
-            lines.Add($"Operation count: `{lastResult.Operations.Count}`");
-            lines.Add($"Changed buffers: `{lastResult.BufferChanges.Count}`");
+            sb.Append($"""
+                       Last selected rule: `{lastResult.SelectedRuleId ?? "<none>"}`
+                       Matched rules: `{string.Join(", ", lastResult.SatisfiedRuleIds)}`
+                       Operation count: `{lastResult.Operations.Count}`
+                       Changed buffers: `{lastResult.BufferChanges.Count}`
 
-            if (!string.IsNullOrWhiteSpace(lastResult.ErrorMessage))
-            {
-                lines.Add(string.Empty);
-                lines.Add("## Final Error");
-                lines.Add($"Failure stage: `{lastResult.FailureStage ?? "<unknown>"}`");
-                lines.Add($"Error type: `{lastResult.ErrorType ?? "<unknown>"}`");
-                lines.Add($"Message: `{lastResult.ErrorMessage}`");
-
-                if (!string.IsNullOrWhiteSpace(lastResult.ErrorDetails))
-                {
-                    lines.Add("```text");
-                    lines.Add(lastResult.ErrorDetails);
-                    lines.Add("```");
-                }
-            }
+                       """);
         }
 
-        var finalFailureEvent = events.LastOrDefault(entry => string.Equals(entry.Name, "step.failed", StringComparison.Ordinal));
-        if (finalFailureEvent is not null)
+        var errorSection = BuildErrorSection(lastResult, events);
+        if (errorSection is not null)
         {
-            AppendFailureEvent(lines, finalFailureEvent.Data);
+            sb.Append(errorSection);
+            sb.AppendLine();
         }
 
         if (groupedEvents.Count > 0)
         {
-            lines.Add(string.Empty);
-            lines.Add("## Event Counts");
-            lines.AddRange(groupedEvents);
+            sb.AppendLine("## Event Counts");
+            sb.AppendLine(string.Join(Environment.NewLine, groupedEvents));
+            sb.AppendLine();
         }
 
-        lines.AddRange([
-            string.Empty,
-            "## Final Buffers",
-            "```json",
-            finalBuffersJson,
-            "```"
-        ]);
+        sb.Append($"""
+                   ## Final Buffers
+                   ```json
+                   {finalBuffersJson}
+                   ```
 
-        var content = string.Join(Environment.NewLine, lines);
-        await File.WriteAllTextAsync(session.SummaryPath, content, cancellationToken);
+                   """);
+
+        await File.WriteAllTextAsync(session.SummaryPath, sb.ToString(), cancellationToken);
     }
+
+    private static string? BuildErrorSection(StepResult? lastResult, IReadOnlyList<HarnessEvent> events)
+    {
+        if (lastResult is not null && !string.IsNullOrWhiteSpace(lastResult.ErrorMessage))
+        {
+            return FormatError(
+                lastResult.FailureStage,
+                lastResult.ErrorType,
+                lastResult.ErrorMessage,
+                lastResult.ErrorDetails);
+        }
+
+        var failureEvent =
+            events.LastOrDefault(entry => string.Equals(entry.Name, "step.failed", StringComparison.Ordinal));
+
+        if (failureEvent?.Data is not { ValueKind: JsonValueKind.Object } element)
+            return null;
+
+        var failureStage = ReadStringProp(element, "failureStage");
+        var errorType = ReadStringProp(element, "errorType");
+        var errorMessage = ReadStringProp(element, "errorMessage");
+        var errorSummary = ReadStringProp(element, "errorSummary");
+        var errorDetails = ReadStringProp(element, "errorDetails");
+
+        if (string.IsNullOrWhiteSpace(errorSummary) && string.IsNullOrWhiteSpace(errorDetails))
+            return null;
+
+        var combinedMessage = new List<string?>();
+        if (!string.IsNullOrWhiteSpace(errorMessage)) combinedMessage.Add(errorMessage);
+        if (!string.IsNullOrWhiteSpace(errorSummary)) combinedMessage.Add(errorSummary);
+
+        return FormatError(
+            failureStage,
+            errorType,
+            string.Join(" | ", combinedMessage),
+            errorDetails);
+    }
+
+    private static string FormatError(
+        string? failureStage,
+        string? errorType,
+        string? message,
+        string? errorDetails)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("## Final Error");
+
+        if (!string.IsNullOrWhiteSpace(failureStage))
+            sb.AppendLine($"Failure stage: `{failureStage}`");
+        if (!string.IsNullOrWhiteSpace(errorType))
+            sb.AppendLine($"Error type: `{errorType}`");
+        if (!string.IsNullOrWhiteSpace(message))
+            sb.AppendLine($"Message: `{message}`");
+
+        if (string.IsNullOrWhiteSpace(errorDetails)) return sb.ToString();
+
+        sb.AppendLine("```text");
+        sb.AppendLine(errorDetails);
+        sb.AppendLine("```");
+
+        return sb.ToString();
+    }
+
+    private static string? ReadStringProp(JsonElement element, string propertyName) =>
+        element.TryGetProperty(propertyName, out var prop) && prop.ValueKind == JsonValueKind.String
+            ? prop.GetString()
+            : null;
 
     private static string SanitizePathSegment(string value)
     {
         var invalid = Path.GetInvalidFileNameChars().ToHashSet();
         return new string(value.Select(ch => invalid.Contains(ch) ? '-' : ch).ToArray());
-    }
-
-    private static void AppendFailureEvent(List<string> lines, IReadOnlyDictionary<string, object?> data)
-    {
-        if (lines.Contains("## Final Error", StringComparer.Ordinal))
-        {
-            return;
-        }
-
-        var failureStage = ReadString(data, "failureStage");
-        var errorType = ReadString(data, "errorType");
-        var errorMessage = ReadString(data, "errorMessage");
-        var errorSummary = ReadString(data, "errorSummary");
-        var errorDetails = ReadString(data, "errorDetails");
-
-        if (string.IsNullOrWhiteSpace(errorSummary) && string.IsNullOrWhiteSpace(errorDetails))
-        {
-            return;
-        }
-
-        lines.Add(string.Empty);
-        lines.Add("## Final Error");
-
-        if (!string.IsNullOrWhiteSpace(failureStage))
-        {
-            lines.Add($"Failure stage: `{failureStage}`");
-        }
-
-        if (!string.IsNullOrWhiteSpace(errorType))
-        {
-            lines.Add($"Error type: `{errorType}`");
-        }
-
-        if (!string.IsNullOrWhiteSpace(errorMessage))
-        {
-            lines.Add($"Message: `{errorMessage}`");
-        }
-
-        if (!string.IsNullOrWhiteSpace(errorSummary))
-        {
-            lines.Add($"Summary: `{errorSummary}`");
-        }
-
-        if (!string.IsNullOrWhiteSpace(errorDetails))
-        {
-            lines.Add("```text");
-            lines.Add(errorDetails);
-            lines.Add("```");
-        }
-    }
-
-    private static string? ReadString(IReadOnlyDictionary<string, object?> data, string key)
-    {
-        return data.TryGetValue(key, out var value)
-            ? value?.ToString()
-            : null;
     }
 }

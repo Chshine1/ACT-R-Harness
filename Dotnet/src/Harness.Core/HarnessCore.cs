@@ -8,16 +8,14 @@ using Microsoft.Extensions.Logging;
 namespace Harness.Core;
 
 public class HarnessCore(
-    IModuleRegistry moduleRegistry,
+    IEnumerable<IModule> modules,
     IProceduralMemory proceduralMemory,
-    INeuroCore neuro,
+    INeuroCore neuroCore,
     IObservabilityEventSink eventSink,
     ILogger<HarnessCore> logger)
     : IProvideLogger
 {
-    private readonly IReadOnlyCollection<IModule> _modules = moduleRegistry.GetModules();
-    private readonly Dictionary<string, IModule> _modulesById = moduleRegistry.GetModules()
-        .ToDictionary(module => module.ModuleId, StringComparer.OrdinalIgnoreCase);
+    private readonly IReadOnlyCollection<IModule> _modules = modules.ToHashSet();
 
     public ILogger Logger => logger;
 
@@ -81,7 +79,7 @@ public class HarnessCore(
                 });
 
             currentStage = "evaluate_conditions";
-            satisfiedRuleIds = (await neuro.EvaluateConditionsAsync(
+            satisfiedRuleIds = (await neuroCore.EvaluateConditionsAsync(
                 conditions,
                 bufferStatesBefore,
                 cancellationToken)).ToArray();
@@ -128,7 +126,7 @@ public class HarnessCore(
                 });
 
             currentStage = "decode_action";
-            var operations = await neuro.DecodeActionAsync(
+            var operations = await neuroCore.DecodeActionAsync(
                 action,
                 bufferStatesBefore,
                 schemas,
@@ -150,7 +148,7 @@ public class HarnessCore(
             foreach (var operation in operations)
             {
                 currentStage = $"apply_operation:{operation.TargetModuleId}.{operation.Command}";
-                if (!_modulesById.TryGetValue(operation.TargetModuleId, out var module))
+                if (_modules.FirstOrDefault(m => m.ModuleId == operation.TargetModuleId) is not { } module)
                 {
                     throw new InvalidOperationException(
                         $"No module registered for target '{operation.TargetModuleId}'.");

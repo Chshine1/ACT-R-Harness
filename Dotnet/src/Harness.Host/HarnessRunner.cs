@@ -12,10 +12,8 @@ namespace Harness.Host;
 
 public class HarnessRunner(
     HarnessCore core,
-    IProceduralMemory proceduralMemory,
-    IClock clock,
+    IEnumerable<ITrainingLifecycle> trainingLifecycles,
     IRewardService rewardService,
-    DemoScenarioSeeder scenarioSeeder,
     RunArtifactsWriter artifactsWriter,
     IObservabilityEventSink eventSink,
     IHostApplicationLifetime applicationLifetime,
@@ -24,6 +22,7 @@ public class HarnessRunner(
     : BackgroundService, IProvideLogger
 {
     private readonly HarnessOptions _options = options.Value;
+    private readonly IReadOnlyCollection<ITrainingLifecycle> _trainingLifecycles = trainingLifecycles.ToHashSet();
 
     public ILogger Logger => logger;
 
@@ -32,8 +31,6 @@ public class HarnessRunner(
     {
         try
         {
-            await WaitForDependenciesAsync(ct);
-
             for (var epoch = 0; epoch < _options.MaxEpochs; epoch++)
             {
                 var session = artifactsWriter.StartRun(epoch);
@@ -43,23 +40,15 @@ public class HarnessRunner(
                     "epoch.started",
                     LogLevel.Information,
                     "Started harness epoch.",
-                    new Dictionary<string, object?>
+                    new
                     {
-                        ["scenarioName"] = session.ScenarioName,
-                        ["runId"] = session.RunId
+                        session.ScenarioName, session.RunId
                     });
 
-                await scenarioSeeder.SeedAsync(ct);
-                eventSink.Record(
-                    "scenario.seeded",
-                    LogLevel.Information,
-                    "Seeded initial scenario state.",
-                    new Dictionary<string, object?>
-                    {
-                        ["goalId"] = _options.Scenario.GoalId,
-                        ["goalStatus"] = _options.Scenario.GoalStatus,
-                        ["workspaceRoot"] = Path.GetFullPath(_options.WorkspaceRoot)
-                    });
+                var capturedEpoch = epoch;
+                var lifecycles =
+                    _trainingLifecycles.Select(t => t.OnEpochStartedAsync(new EpochContext(capturedEpoch), ct));
+                await Task.WhenAll(lifecycles);
 
                 await RunEpochAsync(epoch, session, ct);
             }
@@ -71,94 +60,52 @@ public class HarnessRunner(
     }
 
     [ObserveBoundary]
-    private Task WaitForDependenciesAsync(CancellationToken cancellationToken)
+    private async Task RunEpochAsync(int epoch, RunArtifactsSession session, CancellationToken ct)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        var conditions = proceduralMemory.GetAllConditions();
-        if (conditions.Count == 0)
-        {
-            throw new InvalidOperationException("Procedural memory returned zero rules.");
-        }
-
-        logger.LogInformation("Initialized in-process .NET services. Loaded {RuleCount} rules.", conditions.Count);
-        return Task.CompletedTask;
-    }
-
-    [ObserveBoundary]
-    private async Task RunEpochAsync(
-        int epoch,
-        RunArtifactsSession session,
-        CancellationToken cancellationToken)
-    {
-        var stopReason = "max_steps_reached";
+        var steps = 0;
         StepResult? lastResult = null;
-        var stepCount = 0;
-        var terminated = false;
+        var isTerminal = false;
 
-        for (var step = 0; step < _options.MaxStepsPerEpoch && !cancellationToken.IsCancellationRequested; step++)
+        while (steps < _options.MaxStepsPerEpoch && !ct.IsCancellationRequested)
         {
-            using var stepScope = HarnessExecutionContext.Push(step: step + 1);
+            ct.ThrowIfCancellationRequested();
 
-            var result = await core.StepAsync(cancellationToken);
-            lastResult = result;
-            stepCount = step + 1;
-            stopReason = result.StopReason;
+            using var stepScope = HarnessExecutionContext.Push(step: steps + 1);
+            lastResult = await core.StepAsync(ct);
+            steps++;
 
-            if (result.IsTerminal)
+            if (lastResult.IsTerminal)
             {
-                terminated = true;
+                isTerminal = true;
                 break;
             }
 
-            var reward = await rewardService.ComputeRewardAsync(cancellationToken);
+            var reward = await rewardService.ComputeRewardAsync(ct);
             eventSink.Record(
                 "reward.computed",
                 LogLevel.Debug,
                 "Computed reward after step execution.",
-                new Dictionary<string, object?>
-                {
-                    ["reward"] = reward,
-                    ["training"] = _options.Training
-                });
+                new { Reward = reward, _options.Training });
 
-            await clock.TickAsync(new StepState(reward, _options.Training), cancellationToken);
-            eventSink.Record(
-                "clock.ticked",
-                LogLevel.Debug,
-                "Advanced clock after reward update.",
-                new Dictionary<string, object?>
-                {
-                    ["reward"] = reward,
-                    ["training"] = _options.Training
-                });
-
-            await Task.Delay(10, cancellationToken);
+            await Task.Delay(10, ct);
         }
 
-        if (!terminated && stepCount > 0)
-        {
-            stopReason = "max_steps_reached";
-        }
+        var stopReason = isTerminal ? lastResult?.StopReason : "max_steps_reached";
 
         eventSink.Record(
             "epoch.completed",
             LogLevel.Information,
             "Completed harness epoch.",
-            new Dictionary<string, object?>
+            new
             {
-                ["epoch"] = epoch,
-                ["totalSteps"] = stepCount,
-                ["stopReason"] = stopReason,
-                ["terminated"] = terminated,
-                ["selectedRuleId"] = lastResult?.SelectedRuleId,
-                ["finalBuffers"] = lastResult?.BufferStatesAfter ?? []
+                Epoch = epoch,
+                TotalSteps = steps,
+                StopReason = stopReason,
+                Terminated = isTerminal,
+                lastResult?.SelectedRuleId,
+                FinalBuffers = lastResult?.BufferStatesAfter ?? []
             });
 
-        await artifactsWriter.WriteArtifactsAsync(
-            session,
-            stepCount,
-            stopReason,
-            lastResult,
-            cancellationToken);
+        await artifactsWriter.WriteArtifactsAsync(session, steps, stopReason ?? "<none>", lastResult, ct);
     }
 }

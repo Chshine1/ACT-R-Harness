@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Text.Json;
 using Harness.Core.Observability;
 using Harness.Shared.Observability;
 using Microsoft.Extensions.Logging;
@@ -9,14 +10,19 @@ public class StructuredObservabilitySink(ILogger<StructuredObservabilitySink> lo
 {
     private readonly ConcurrentDictionary<string, ConcurrentQueue<HarnessEvent>> _eventsByRunId = new();
 
-    public void Record(
-        string name,
-        LogLevel level,
-        string message,
-        IReadOnlyDictionary<string, object?>? data = null)
+    private static readonly JsonSerializerOptions ConvertOptions = new()
     {
+        PropertyNamingPolicy = null,
+        PropertyNameCaseInsensitive = false
+    };
+
+    public void Record(string name, LogLevel level, string message, object? data = null)
+    {
+        JsonElement? jsonData = data is not null
+            ? JsonSerializer.SerializeToElement(data, ConvertOptions)
+            : null;
+
         var context = HarnessExecutionContext.Current;
-        var eventData = data ?? new Dictionary<string, object?>();
         var entry = new HarnessEvent(
             DateTimeOffset.UtcNow,
             name,
@@ -28,18 +34,17 @@ public class StructuredObservabilitySink(ILogger<StructuredObservabilitySink> lo
                 context.Step,
                 context.CorrelationId,
                 context.Operation),
-            eventData);
+            jsonData);
 
         if (!string.IsNullOrWhiteSpace(context.RunId))
         {
-            var queue = _eventsByRunId.GetOrAdd(context.RunId, static _ => new ConcurrentQueue<HarnessEvent>());
+            var queue = _eventsByRunId.GetOrAdd(context.RunId, _ => new ConcurrentQueue<HarnessEvent>());
             queue.Enqueue(entry);
         }
 
-        if (TryGetExceptionDetails(entry.Data, out var errorSummary, out var errorStackTrace))
+        if (TryGetExceptionDetails(jsonData, out var errorSummary, out var errorStackTrace))
         {
-            logger.Log(
-                level,
+            logger.Log(level,
                 "Event {EventName} runId={RunId} epoch={Epoch} step={Step} correlationId={CorrelationId} operation={Operation} error={ErrorSummary} data={EventData}{NewLine}{ErrorStackTrace}",
                 entry.Name,
                 entry.Context.RunId ?? "<none>",
@@ -48,15 +53,13 @@ public class StructuredObservabilitySink(ILogger<StructuredObservabilitySink> lo
                 entry.Context.CorrelationId ?? "<none>",
                 entry.Context.Operation ?? "<none>",
                 errorSummary,
-                ObservabilityFormatter.Summarize(entry.Data),
+                ObservabilityFormatter.Summarize(jsonData),
                 Environment.NewLine,
                 errorStackTrace);
-
             return;
         }
 
-        logger.Log(
-            level,
+        logger.Log(level,
             "Event {EventName} runId={RunId} epoch={Epoch} step={Step} correlationId={CorrelationId} operation={Operation} data={EventData}",
             entry.Name,
             entry.Context.RunId ?? "<none>",
@@ -64,20 +67,31 @@ public class StructuredObservabilitySink(ILogger<StructuredObservabilitySink> lo
             entry.Context.Step?.ToString() ?? "<none>",
             entry.Context.CorrelationId ?? "<none>",
             entry.Context.Operation ?? "<none>",
-            ObservabilityFormatter.Summarize(entry.Data));
+            ObservabilityFormatter.Summarize(jsonData));
     }
 
     private static bool TryGetExceptionDetails(
-        IReadOnlyDictionary<string, object?> data,
+        JsonElement? data,
         out string errorSummary,
         out string errorStackTrace)
     {
-        errorSummary = data.TryGetValue("errorSummary", out var summaryValue)
-            ? summaryValue?.ToString() ?? string.Empty
-            : string.Empty;
-        errorStackTrace = data.TryGetValue("errorStackTrace", out var stackTraceValue)
-            ? stackTraceValue?.ToString() ?? string.Empty
-            : string.Empty;
+        errorSummary = string.Empty;
+        errorStackTrace = string.Empty;
+
+        if (data is not { ValueKind: JsonValueKind.Object } element)
+            return false;
+
+        if (element.TryGetProperty("errorSummary", out var summaryProp) &&
+            summaryProp.ValueKind == JsonValueKind.String)
+        {
+            errorSummary = summaryProp.GetString() ?? "";
+        }
+
+        if (element.TryGetProperty("errorStackTrace", out var stackProp) &&
+            stackProp.ValueKind == JsonValueKind.String)
+        {
+            errorStackTrace = stackProp.GetString() ?? "";
+        }
 
         return !string.IsNullOrWhiteSpace(errorSummary) || !string.IsNullOrWhiteSpace(errorStackTrace);
     }

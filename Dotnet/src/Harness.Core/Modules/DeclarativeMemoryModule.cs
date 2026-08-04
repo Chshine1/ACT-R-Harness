@@ -3,6 +3,8 @@ using Harness.Abstractions;
 using Harness.Abstractions.Actr;
 using Harness.Abstractions.Actr.Services;
 using Harness.Abstractions.Modules;
+using Harness.Core.Configuration;
+using Microsoft.Extensions.Options;
 
 namespace Harness.Core.Modules;
 
@@ -39,21 +41,24 @@ public record AddChunkRequest(string Id, Struct Slots) : IStructRepresentable<Ad
         new(s.Fields["id"].StringValue, s.Fields["slots"].StructValue);
 }
 
-public class DeclarativeMemoryModule : ModuleBase
+public class DeclarativeMemoryModule : ModuleBase, ITrainingLifecycle
 {
     private const double DefaultDeltaTimeSeconds = 60.0;
     private readonly DeclarativeMemoryService _memoryService;
-    private readonly Func<IReadOnlyCollection<IModule>> _moduleProvider;
+    private readonly DeclarativeMemoryOptions _options;
+    private readonly IReadOnlyCollection<IModule> _modules;
     private MemoryChunk? _lastRetrieved;
     private readonly HashSet<string> _knownSlotKeys = [];
 
     public DeclarativeMemoryModule(
         DeclarativeMemoryService memoryService,
-        IClock clock,
-        Func<IReadOnlyCollection<IModule>> moduleProvider)
+        IOptions<DeclarativeMemoryOptions> options,
+        IEnumerable<IModule> modules,
+        IClock clock)
     {
         _memoryService = memoryService;
-        _moduleProvider = moduleProvider;
+        _options = options.Value;
+        _modules = modules.ToHashSet();
         clock.OnTickAsync += OnTickAsync;
     }
 
@@ -128,7 +133,7 @@ public class DeclarativeMemoryModule : ModuleBase
     private async Task OnTickAsync(StepState stepState, CancellationToken cancellationToken)
     {
         var snapshots = new Struct();
-        foreach (var module in _moduleProvider())
+        foreach (var module in _modules)
         {
             var state = module.GetBufferState();
             snapshots.Fields[state.ModuleId] = Value.ForStruct(state.Data);
@@ -146,5 +151,43 @@ public class DeclarativeMemoryModule : ModuleBase
     private static double Now()
     {
         return DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0;
+    }
+
+    public Task OnEpochStartedAsync(EpochContext context)
+    {
+        var workspaceRoot = Path.GetFullPath(_options.Seed.WorkspaceRoot);
+        if (!Directory.Exists(workspaceRoot))
+        {
+            throw new DirectoryNotFoundException($"Workspace root '{workspaceRoot}' does not exist.");
+        }
+
+        if (_options.Seed.SeedMemoryChunk is not { } chunk || string.IsNullOrWhiteSpace(chunk.Id))
+            return Task.CompletedTask;
+
+        var slotFields = new Struct
+        {
+            Fields =
+            {
+                ["module"] = Value.ForString(chunk.Module),
+                ["keywords"] = Value.ForString(chunk.Keywords),
+            }
+        };
+
+        if (!string.IsNullOrWhiteSpace(chunk.RelativeFilePath))
+        {
+            var absolutePath = Path.GetFullPath(Path.Combine(workspaceRoot, chunk.RelativeFilePath));
+            if (!File.Exists(absolutePath))
+            {
+                throw new FileNotFoundException(
+                    $"Seed file '{absolutePath}' does not exist.",
+                    absolutePath);
+            }
+
+            slotFields.Fields["file"] = Value.ForString(absolutePath);
+        }
+
+        AddChunk(new AddChunkRequest(Id: chunk.Id, Slots: slotFields));
+
+        return Task.CompletedTask;
     }
 }

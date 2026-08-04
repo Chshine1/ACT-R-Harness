@@ -4,6 +4,8 @@ using Harness.Abstractions.Actr;
 using Harness.Abstractions.Modules;
 using Harness.Shared.Utils;
 using System.Collections.Concurrent;
+using Harness.Codebase.Configuration;
+using Microsoft.Extensions.Options;
 
 namespace Harness.Codebase.Modules;
 
@@ -54,11 +56,12 @@ public record VisibleEntry(string Name, EntryType Type, string? Extension, long 
     };
 }
 
-public class FileExplorerModule : ModuleBase
+public class FileExplorerModule : ModuleBase, ITrainingLifecycle
 {
     public override string ModuleId => "file_explorer";
 
-    private const int TopK = 10;
+    private readonly FileExplorerOptions _options;
+
     private readonly IEmbeddingService _embedding;
 
     private string _currentDirectory = string.Empty;
@@ -72,10 +75,11 @@ public class FileExplorerModule : ModuleBase
     private IReadOnlyList<VisibleEntry> _visibleEntries = [];
     private readonly SemaphoreSlim _visibleEntriesLock = new(1, 1);
 
-    public FileExplorerModule(IEmbeddingService embedding, IClock clock)
+    public FileExplorerModule(IEmbeddingService embedding, IClock clock, IOptions<FileExplorerOptions> options)
     {
         _embedding = embedding ?? throw new ArgumentNullException(nameof(embedding));
         clock.OnTickAsync += OnTickAsync;
+        _options = options.Value;
     }
 
     [ModuleCommand("goto_directory")]
@@ -227,7 +231,7 @@ public class FileExplorerModule : ModuleBase
         {
             ranked = fullList?.Select(e => e with { RelevanceScore = 0f })
                 .OrderBy(e => e.Name)
-                .Take(TopK)
+                .Take(_options.TopK)
                 .ToList() ?? [];
         }
         else
@@ -239,7 +243,7 @@ public class FileExplorerModule : ModuleBase
                     return entry with { RelevanceScore = score };
                 })
                 .OrderByDescending(e => e.RelevanceScore)
-                .Take(TopK)
+                .Take(_options.TopK)
                 .ToList();
         }
 
@@ -290,5 +294,18 @@ public class FileExplorerModule : ModuleBase
             var names = entries.Select(e => e.Name).Distinct().ToList();
             await FetchAndCacheEmbeddingsAsync(names, CancellationToken.None);
         });
+    }
+
+    public Task OnEpochStartedAsync(EpochContext context)
+    {
+        var workspaceRoot = Path.GetFullPath(_options.Seed.WorkspaceRoot);
+        if (!Directory.Exists(workspaceRoot))
+        {
+            throw new DirectoryNotFoundException($"Workspace root '{workspaceRoot}' does not exist.");
+        }
+
+        GotoDirectory(new GotoDirectoryRequest(workspaceRoot));
+
+        return Task.CompletedTask;
     }
 }

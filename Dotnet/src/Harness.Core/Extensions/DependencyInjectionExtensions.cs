@@ -35,25 +35,16 @@ public static class DependencyInjectionExtensions
             services.AddSingleton<FuzzyConditionEvaluator>();
             services.AddSingleton<ConditionEvaluator>();
             services.AddSingleton<ActionResolver>();
-            services.AddSingleton<Func<IReadOnlyCollection<IModule>>>(sp =>
-                () => sp.GetRequiredService<IModuleRegistry>().GetModules());
 
             services.AddSingleton<DeclarativeMemoryModule>();
             services.AddSingleton<IntentionModule>();
             services.AddSingleton<FileExplorerModule>();
             services.AddSingleton<CodeViewportModule>();
 
-            services.AddSingleton<IModuleRegistry, ModuleRegistry>(sp =>
-            {
-                var registry = new ModuleRegistry();
-
-                registry.RegisterModule(sp.GetRequiredService<DeclarativeMemoryModule>());
-                registry.RegisterModule(sp.GetRequiredService<IntentionModule>());
-                registry.RegisterModule(sp.GetRequiredService<FileExplorerModule>());
-                registry.RegisterModule(sp.GetRequiredService<CodeViewportModule>());
-
-                return registry;
-            });
+            services.AddSingleton<IModule, DeclarativeMemoryModule>();
+            services.AddSingleton<IModule, IntentionModule>();
+            services.AddSingleton<IModule, FileExplorerModule>();
+            services.AddSingleton<IModule, CodeViewportModule>();
 
             services.AddSingleton<IProceduralMemory, ProceduralMemory>();
             services.AddSingleton<INeuroCore, NeuroCore.NeuroCore>();

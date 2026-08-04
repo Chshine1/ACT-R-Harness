@@ -1,3 +1,4 @@
+using Harness.Codebase.Configuration;
 using Harness.Core.Configuration;
 using Harness.Core.Observability;
 using Harness.Core.Extensions;
@@ -17,13 +18,16 @@ public class Program
             .ConfigureServices((context, services) =>
             {
                 services.Configure<HarnessOptions>(context.Configuration.GetSection(HarnessOptions.Section));
-                services.Configure<ProceduralMemoryOptions>(context.Configuration.GetSection(ProceduralMemoryOptions.Section));
-                services.Configure<DeclarativeMemoryOptions>(context.Configuration.GetSection(DeclarativeMemoryOptions.Section));
+                services.Configure<FileExplorerOptions>(context.Configuration.GetSection(FileExplorerOptions.Section));
+                services.Configure<ProceduralMemoryOptions>(
+                    context.Configuration.GetSection(ProceduralMemoryOptions.Section));
+                services.Configure<DeclarativeMemoryOptions>(
+                    context.Configuration.GetSection(DeclarativeMemoryOptions.Section));
+                services.Configure<IntentionOptions>(context.Configuration.GetSection(IntentionOptions.Section));
                 services.Configure<LlmClientOptions>(context.Configuration.GetSection(LlmClientOptions.Section));
 
                 services.AddHarnessCore();
                 services.AddSingleton<IObservabilityEventSink, StructuredObservabilitySink>();
-                services.AddSingleton<DemoScenarioSeeder>();
                 services.AddSingleton<RunArtifactsWriter>();
                 services.AddHostedService<HarnessRunner>();
             })

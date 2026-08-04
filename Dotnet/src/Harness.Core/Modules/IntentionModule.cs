@@ -1,6 +1,9 @@
 ﻿using Google.Protobuf.WellKnownTypes;
+using Harness.Abstractions;
 using Harness.Abstractions.Actr;
 using Harness.Abstractions.Modules;
+using Harness.Core.Configuration;
+using Microsoft.Extensions.Options;
 
 namespace Harness.Core.Modules;
 
@@ -15,7 +18,9 @@ public record SetGoalRequest(string Id, Struct Slots) : IStructRepresentable<Set
 public record PushSubgoalRequest(string Id, Struct Slots) : IStructRepresentable<PushSubgoalRequest>
 {
     public Struct ToStruct() => new() { Fields = { ["id"] = Value.ForString(Id), ["slots"] = Value.ForStruct(Slots) } };
-    public static PushSubgoalRequest FromStruct(Struct s) => new(s.Fields["id"].StringValue, s.Fields["slots"].StructValue);
+
+    public static PushSubgoalRequest FromStruct(Struct s) =>
+        new(s.Fields["id"].StringValue, s.Fields["slots"].StructValue);
 }
 
 [ModuleCommandRequest("""{"slot": "string", "slot_value": "object"}""")]
@@ -25,13 +30,14 @@ public record ModifySlotRequest(string Slot, Value SlotValue) : IStructRepresent
     public static ModifySlotRequest FromStruct(Struct s) => new(s.Fields["slot"].StringValue, s.Fields["slot_value"]);
 }
 
-public class IntentionModule : ModuleBase
+public class IntentionModule(IOptions<IntentionOptions> options) : ModuleBase, ITrainingLifecycle
 {
     private const int MaxStackSize = 7;
 
+    private readonly IntentionOptions _options = options.Value;
     private readonly Stack<Goal> _goalStack = new();
     private string? _lastExposedGoalId;
-    
+
     public override string ModuleId => "intention";
 
     public override BufferState GetBufferState()
@@ -50,7 +56,7 @@ public class IntentionModule : ModuleBase
             data.Fields["current_goal"] = Value.ForNull();
             data.Fields["stack_depth"] = Value.ForNumber(0);
         }
-        
+
         var goalJustChanged = currentGoalId != _lastExposedGoalId;
         data.Fields["goal_just_changed"] = Value.ForBool(goalJustChanged);
         data.Fields["last_goal_id"] = _lastExposedGoalId != null
@@ -82,7 +88,7 @@ public class IntentionModule : ModuleBase
             _goalStack.Pop();
         _goalStack.Push(goal);
     }
-    
+
     [ModuleCommand("push_subgoal")]
     protected void PushSubgoal(PushSubgoalRequest request)
     {
@@ -132,7 +138,7 @@ public class IntentionModule : ModuleBase
         public required string Id { get; init; }
         public required double CreationTime { get; init; }
         public required Dictionary<string, Value> Slots { get; init; }
-        
+
         public Struct ToStruct()
         {
             var s = new Struct
@@ -154,5 +160,24 @@ public class IntentionModule : ModuleBase
     private static double Now()
     {
         return DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0;
+    }
+
+    public Task OnEpochStartedAsync(EpochContext context)
+    {
+        _goalStack.Clear();
+
+        var goalSlots = new Struct
+        {
+            Fields =
+            {
+                ["id"] = Value.ForString(_options.Seed.GoalId),
+                ["query"] = Value.ForString(_options.Seed.Query),
+                ["status"] = Value.ForString(_options.Seed.GoalStatus)
+            }
+        };
+
+        SetGoal(new SetGoalRequest(Id: _options.Seed.GoalId, Slots: goalSlots));
+
+        return Task.CompletedTask;
     }
 }
