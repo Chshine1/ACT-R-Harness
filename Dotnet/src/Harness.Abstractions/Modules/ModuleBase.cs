@@ -93,7 +93,7 @@ public abstract class ModuleBase : IModule, IProvideLogger
         return schema;
     }
 
-    [ObserveBoundary]
+    [TraceSpan]
     public void OperateBuffer(BufferOperation op)
     {
         if (!_commandMap.TryGetValue(op.Command, out var cacheEntry))

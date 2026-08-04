@@ -13,7 +13,7 @@ public class NeuroCore(
 {
     public ILogger Logger => logger;
 
-    [ObserveBoundary]
+    [TraceSpan]
     public async Task<IReadOnlyList<string>> EvaluateConditionsAsync(
         IReadOnlyList<ProceduralCondition> conditions,
         IReadOnlyList<BufferState> bufferStates,
@@ -23,7 +23,7 @@ public class NeuroCore(
         return await conditionEvaluator.EvaluateAsync(conditions, bufferStates, cancellationToken);
     }
 
-    [ObserveBoundary]
+    [TraceSpan]
     public async Task<IReadOnlyList<BufferOperation>> DecodeActionAsync(
         NeuroAction actionIntent,
         IReadOnlyList<BufferState> currentStates,

@@ -19,7 +19,7 @@ public class ActionResolver(LlmClient llmClient, ILogger<ActionResolver> logger)
 
     public ILogger Logger => logger;
 
-    [ObserveBoundary]
+    [TraceSpan]
     public async Task<IReadOnlyList<BufferOperation>> DecodeActionAsync(
         NeuroAction actionIntent,
         IReadOnlyList<BufferState> currentStates,
@@ -137,7 +137,7 @@ public class ActionResolver(LlmClient llmClient, ILogger<ActionResolver> logger)
         return determinedOperations;
     }
 
-    [ObserveBoundary]
+    [TraceSpan]
     private async Task<IReadOnlyList<BufferOperation>> ResolveSemanticCommandsAsync(
         IReadOnlyList<BufferOperation> determinedOperations,
         IReadOnlyList<SemanticEntry> semanticEntries,
@@ -175,7 +175,7 @@ public class ActionResolver(LlmClient llmClient, ILogger<ActionResolver> logger)
         return ParseOperations(response);
     }
 
-    [ObserveBoundary]
+    [TraceSpan]
     private async Task<IReadOnlyList<BufferOperation>> DecodeNeuroIntentsAsync(
         IReadOnlyList<BufferOperation> determinedOperations,
         IReadOnlyList<Dictionary<string, object?>> neuroIntents,

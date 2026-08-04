@@ -12,7 +12,7 @@ public class ConditionEvaluator(
 {
     public ILogger Logger => logger;
 
-    [ObserveBoundary]
+    [TraceSpan]
     public async Task<IReadOnlyList<string>> EvaluateAsync(
         IReadOnlyList<ProceduralCondition> conditions,
         IReadOnlyList<BufferState> bufferStates,

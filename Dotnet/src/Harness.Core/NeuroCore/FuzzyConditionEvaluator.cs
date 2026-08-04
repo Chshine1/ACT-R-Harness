@@ -9,7 +9,7 @@ public class FuzzyConditionEvaluator(LlmClient llm, ILogger<FuzzyConditionEvalua
 {
     public ILogger Logger => logger;
 
-    [ObserveBoundary]
+    [TraceSpan]
     public async Task<IReadOnlyList<string>> EvaluateAsync(
         IReadOnlyList<ProceduralCondition> conditions,
         BuffersView view,

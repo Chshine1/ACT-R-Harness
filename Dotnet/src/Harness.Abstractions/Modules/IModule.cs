@@ -29,12 +29,12 @@ public interface IModule
 {
     string ModuleId { get; }
 
-    [ObserveBoundary]
+    [TraceSpan]
     BufferState GetBufferState();
 
-    [ObserveBoundary]
+    [TraceSpan]
     ModuleSchema GetOperationSchema();
 
-    [ObserveBoundary]
+    [TraceSpan]
     void OperateBuffer(BufferOperation op);
 }

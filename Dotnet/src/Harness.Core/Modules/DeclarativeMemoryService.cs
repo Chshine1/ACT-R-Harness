@@ -22,7 +22,7 @@ public class DeclarativeMemoryService(
 
     public ILogger Logger => logger;
 
-    [ObserveBoundary]
+    [TraceSpan]
     public void AddChunk(Abstractions.Actr.Services.AddChunkRequest request)
     {
         var chunk = request.Chunk.Clone();
@@ -34,7 +34,7 @@ public class DeclarativeMemoryService(
         }
     }
 
-    [ObserveBoundary]
+    [TraceSpan]
     public RetrieveResponse Retrieve(RetrieveRequest request)
     {
         lock (_sync)
@@ -75,7 +75,7 @@ public class DeclarativeMemoryService(
         }
     }
 
-    [ObserveBoundary]
+    [TraceSpan]
     public Task TickMemoryAsync(
         TickMemoryRequest request,
         CancellationToken cancellationToken = default)

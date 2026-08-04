@@ -21,4 +21,8 @@
         <ProjectReference Include="..\Harness.Codebase\Harness.Codebase.csproj"/>
     </ItemGroup>
 
+    <ItemGroup>
+      <Folder Include="Observability\" />
+    </ItemGroup>
+
 </Project>

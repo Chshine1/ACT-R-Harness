@@ -59,7 +59,7 @@ public class ProceduralMemory : IProceduralMemory, IProvideLogger
 
     public ILogger Logger => _logger;
 
-    [ObserveBoundary]
+    [TraceSpan]
     public IReadOnlyList<ProceduralCondition> GetAllConditions()
     {
         return _rules.Values
@@ -67,7 +67,7 @@ public class ProceduralMemory : IProceduralMemory, IProvideLogger
             .ToList();
     }
 
-    [ObserveBoundary]
+    [TraceSpan]
     public NeuroAction SelectRule(IReadOnlyList<string> satisfiedRuleIds)
     {
         var applicableRules = _rules.Values
@@ -119,7 +119,7 @@ public class ProceduralMemory : IProceduralMemory, IProvideLogger
         return selectedRule.Action.Clone();
     }
 
-    [ObserveBoundary]
+    [TraceSpan]
     private async Task LearnUtilityAsync(float reward, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();

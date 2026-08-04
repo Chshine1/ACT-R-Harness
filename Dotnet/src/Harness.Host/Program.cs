@@ -1,6 +1,5 @@
 using Harness.Codebase.Configuration;
 using Harness.Core.Configuration;
-using Harness.Core.Observability;
 using Harness.Core.Extensions;
 using Harness.Host.Options;
 using JetBrains.Annotations;
@@ -27,8 +26,6 @@ public class Program
                 services.Configure<LlmClientOptions>(context.Configuration.GetSection(LlmClientOptions.Section));
 
                 services.AddHarnessCore();
-                services.AddSingleton<IObservabilityEventSink, StructuredObservabilitySink>();
-                services.AddSingleton<RunArtifactsWriter>();
                 services.AddHostedService<HarnessRunner>();
             })
             .Build();

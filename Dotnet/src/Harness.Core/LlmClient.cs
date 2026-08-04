@@ -39,7 +39,7 @@ public class LlmClient : IProvideLogger
         _chatClient = openAiClient.GetChatClient(options.Value.Model);
     }
 
-    [ObserveBoundary]
+    [TraceSpan]
     public async Task<JsonNode?> ChatJsonAsync(
         object? userData,
         string system,
