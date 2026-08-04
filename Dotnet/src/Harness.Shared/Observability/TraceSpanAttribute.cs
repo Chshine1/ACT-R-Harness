@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+﻿using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Reflection;
 using JetBrains.Annotations;
 using MethodBoundaryAspect.Fody.Attributes;
@@ -11,8 +12,8 @@ public sealed class TraceSpanAttribute : OnMethodBoundaryAspect
 {
     private static readonly ActivitySource Source = new("ACTR.Harness");
 
-    private ISpanTagsCompiler? _tagsCompiler;
-    private Action<Activity, object?[]>? _setActivityTags;
+    private static readonly ConcurrentDictionary<MethodBase, Action<Activity, object?[]>> TagSetters = new();
+    private readonly Lazy<ISpanTagsCompiler> _tagsCompilerLazy;
 
     public Type? CompilerType { get; init; }
     public string? SpanName { get; }
@@ -20,11 +21,12 @@ public sealed class TraceSpanAttribute : OnMethodBoundaryAspect
 
     public TraceSpanAttribute()
     {
+        _tagsCompilerLazy = new Lazy<ISpanTagsCompiler>(CreateCompiler);
     }
 
-    public TraceSpanAttribute(string spanName) => SpanName = spanName;
+    public TraceSpanAttribute(string spanName) : this() => SpanName = spanName;
 
-    public TraceSpanAttribute(string spanName, params string[] tags) => (SpanName, Tags) = (spanName, tags);
+    public TraceSpanAttribute(string spanName, params string[] tags) : this() => (SpanName, Tags) = (spanName, tags);
 
     private static string GetSpanName(MethodBase method) =>
         method.DeclaringType is { } t ? $"{t.Name}.{method.Name}" : method.Name;
@@ -36,19 +38,12 @@ public sealed class TraceSpanAttribute : OnMethodBoundaryAspect
 
         if (Tags is { Length: > 0 })
         {
-            if (_setActivityTags == null)
+            var setter = TagSetters.GetOrAdd(args.Method, m =>
             {
-                lock (this)
-                {
-                    if (_setActivityTags == null)
-                    {
-                        _tagsCompiler ??= CreateCompiler();
-                        _setActivityTags = _tagsCompiler.CompileAllTags(method, Tags);
-                    }
-                }
-            }
-
-            if (activity is not null) _setActivityTags(activity, args.Arguments);
+                var compiler = _tagsCompilerLazy.Value;
+                return compiler.CompileAllTags(m, Tags);
+            });
+            if (activity is not null) setter(activity, args.Arguments);
         }
 
         args.MethodExecutionTag = new SpanState
@@ -57,7 +52,37 @@ public sealed class TraceSpanAttribute : OnMethodBoundaryAspect
         };
     }
 
-    public override void OnExit(MethodExecutionArgs args) => Complete(args, exception: null);
+    public override void OnExit(MethodExecutionArgs args)
+    {
+        if (args.ReturnValue is Task task)
+        {
+            if (args.MethodExecutionTag is not SpanState state) return;
+            args.MethodExecutionTag = null;
+
+            task.ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                {
+                    var ex = t.Exception?.InnerException ?? t.Exception;
+                    state.Activity?.SetStatus(ActivityStatusCode.Error, ex?.Message ?? "Error");
+                }
+                else if (t.IsCanceled)
+                {
+                    state.Activity?.SetStatus(ActivityStatusCode.Error, "Canceled");
+                }
+                else
+                {
+                    state.Activity?.SetStatus(ActivityStatusCode.Ok);
+                }
+
+                state.Activity?.Dispose();
+            }, TaskScheduler.Default);
+
+            return;
+        }
+
+        Complete(args, null);
+    }
 
     public override void OnException(MethodExecutionArgs args) => Complete(args, args.Exception);
 
