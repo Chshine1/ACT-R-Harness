@@ -7,22 +7,6 @@ using System.Text.Json.Serialization;
 
 namespace Harness.Shared.Observability;
 
-/// <summary>
-/// Compiles tag definitions into efficient setter delegates to avoid runtime parsing and reflection.
-/// </summary>
-public interface ISpanTagsCompiler
-{
-    // ReSharper disable once InvalidXmlDocComment
-    /// <summary>
-    /// Compiles all tag definitions for a given method into a single <see cref="Action{Activity, object?[]}"/>
-    /// that sets tags on the provided <see cref="Activity"/> using the arguments array.
-    /// </summary>
-    /// <param name="method">The target method for which the tags are being compiled.</param>
-    /// <param name="tagDefs">Array of tag definitions following the supported syntax.</param>
-    /// <returns>A compiled delegate that sets all tags when invoked with an <see cref="Activity"/> and an array of method arguments.</returns>
-    Action<Activity, object?[]> CompileAllTags(MethodBase method, string[] tagDefs);
-}
-
 // ReSharper disable GrammarMistakeInComment
 /// <summary>
 /// Default implementation of <see cref="ISpanTagsCompiler"/> that compiles tag definitions into expression trees.
@@ -53,182 +37,40 @@ public class SpanTagsCompiler : ISpanTagsCompiler
         Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
 
-    private struct TagSpec
-    {
-        public string Key;
-        public int ParamIndex;
-        public string[]? PropertyPath;
-        public bool AsJson;
-        public bool IsOptional;
-        public object? ConstantValue;
-        public bool IsConstant;
-    }
-
-    /// <summary>
-    /// Parses a single tag definition and resolves parameter names against the given parameter list.
-    /// </summary>
-    private static TagSpec ParseTag(string definition, ParameterInfo[] parameters)
-    {
-        if (string.IsNullOrWhiteSpace(definition)) throw new FormatException("Label definition cannot be empty");
-
-        string? key;
-        string valueExpr;
-        var isOptional = false;
-
-        var optionalEqIndex = definition.IndexOf("?=", StringComparison.Ordinal);
-        var normalEqIndex = definition.IndexOf('=');
-
-        if (optionalEqIndex >= 0)
-        {
-            key = definition[..optionalEqIndex].Trim();
-            valueExpr = definition[(optionalEqIndex + 2)..].Trim();
-            isOptional = true;
-        }
-        else if (normalEqIndex >= 0)
-        {
-            key = definition[..normalEqIndex].Trim();
-            valueExpr = definition[(normalEqIndex + 1)..].Trim();
-        }
-        else
-        {
-            throw new FormatException(
-                $"Label definition must be of `<key> (?)= <value> <options>` format: {definition}");
-        }
-
-        bool isConstant;
-        object? constantValue = null;
-        string? paramName = null;
-        string[]? propertyPath = null;
-        var asJson = false;
-
-        const string asJsonSuffix = " as json";
-        var hasJsonSuffix = valueExpr.EndsWith(asJsonSuffix, StringComparison.OrdinalIgnoreCase);
-        if (hasJsonSuffix)
-        {
-            valueExpr = valueExpr[..^asJsonSuffix.Length].TrimEnd();
-            asJson = true;
-        }
-
-        if (valueExpr.StartsWith('\'') && valueExpr.EndsWith('\'') && valueExpr.Length >= 2)
-        {
-            var raw = valueExpr.Substring(1, valueExpr.Length - 2);
-            constantValue = raw.Replace("\\'", "'");
-            isConstant = true;
-        }
-        else if (valueExpr.Equals("null", StringComparison.OrdinalIgnoreCase))
-        {
-            constantValue = null;
-            isConstant = true;
-        }
-        else if (valueExpr.Equals("true", StringComparison.OrdinalIgnoreCase))
-        {
-            constantValue = true;
-            isConstant = true;
-        }
-        else if (valueExpr.Equals("false", StringComparison.OrdinalIgnoreCase))
-        {
-            constantValue = false;
-            isConstant = true;
-        }
-        else if (long.TryParse(valueExpr, out var longVal) && valueExpr == longVal.ToString())
-        {
-            constantValue = longVal;
-            isConstant = true;
-        }
-        else if (double.TryParse(valueExpr, NumberStyles.Float, CultureInfo.InvariantCulture, out double doubleVal))
-        {
-            constantValue = doubleVal;
-            isConstant = true;
-        }
-        else if (valueExpr.StartsWith('{') && valueExpr.EndsWith('}') && valueExpr.Length >= 3)
-        {
-            var inner = valueExpr.Substring(1, valueExpr.Length - 2).Trim();
-            if (inner.Length == 0) throw new FormatException($"Interpolation tag cannot be empty: {definition}");
-
-            var dotIndex = inner.IndexOf('.');
-            if (dotIndex > 0)
-            {
-                paramName = inner[..dotIndex];
-                var path = inner[(dotIndex + 1)..];
-                propertyPath = path.Split('.');
-            }
-            else
-            {
-                paramName = inner;
-                propertyPath = null;
-            }
-
-            isConstant = false;
-        }
-        else
-        {
-            throw new FormatException($"Unable to parse value expression: '{valueExpr}', at definition: {definition}");
-        }
-
-        if (string.IsNullOrEmpty(key)) throw new FormatException($"Tag key cannot be empty: {definition}");
-
-        var paramIndex = -1;
-        if (isConstant)
-            return new TagSpec
-            {
-                Key = key,
-                ParamIndex = paramIndex,
-                PropertyPath = propertyPath,
-                AsJson = asJson,
-                IsOptional = isOptional,
-                ConstantValue = constantValue,
-                IsConstant = isConstant
-            };
-        for (var i = 0; i < parameters.Length; i++)
-        {
-            if (!string.Equals(parameters[i].Name, paramName, StringComparison.Ordinal)) continue;
-            paramIndex = i;
-            break;
-        }
-
-        if (paramIndex == -1)
-            throw new FormatException($"Method parameter '{paramName}' not found, at definition: {definition}");
-
-        return new TagSpec
-        {
-            Key = key,
-            ParamIndex = paramIndex,
-            PropertyPath = propertyPath,
-            AsJson = asJson,
-            IsOptional = isOptional,
-            ConstantValue = constantValue,
-            IsConstant = isConstant
-        };
-    }
-
     /// <inheritdoc />
-    public Action<Activity, object?[]> CompileAllTags(MethodBase method, string[] tagDefs)
+    public Action<Activity, object?, object?[]> CompileAllTags(MethodBase method, string[] tagDefs)
     {
         var parameters = method.GetParameters();
         var activityParam = Expression.Parameter(typeof(Activity), "activity");
+        var targetParam = Expression.Parameter(typeof(object), "target");
         var argsParam = Expression.Parameter(typeof(object?[]), "args");
         var bodyExpressions = new List<Expression>();
 
-        foreach (var t in tagDefs)
+        foreach (var def in tagDefs)
         {
-            var spec = ParseTag(t, parameters);
-            var valueExpr = BuildValueExpression(spec, parameters, argsParam);
+            var spec = ParseTag(def, parameters);
+
+            if (spec.IsThisReference && method.IsStatic)
+                throw new FormatException($"Cannot use 'this' in a static method: {def}");
+
+            // ReSharper disable once NullableWarningSuppressionIsUsed
+            var valueExpr = BuildValueExpression(spec, parameters, argsParam, targetParam, method.DeclaringType!);
+
+            Expression setTagCall = Expression.Call(
+                activityParam,
+                nameof(Activity.SetTag),
+                typeArguments: null,
+                Expression.Constant(spec.Key),
+                Expression.Convert(valueExpr, typeof(object)));
 
             if (spec.IsOptional)
             {
                 var condition = Expression.NotEqual(valueExpr, Expression.Constant(null, typeof(object)));
-                var call = Expression.Call(activityParam,
-                    nameof(Activity.SetTag), null,
-                    Expression.Constant(spec.Key),
-                    Expression.Convert(valueExpr, typeof(object)));
-                bodyExpressions.Add(Expression.IfThen(condition, call));
+                bodyExpressions.Add(Expression.IfThen(condition, setTagCall));
             }
             else
             {
-                bodyExpressions.Add(Expression.Call(activityParam,
-                    nameof(Activity.SetTag), null,
-                    Expression.Constant(spec.Key),
-                    Expression.Convert(valueExpr, typeof(object))));
+                bodyExpressions.Add(setTagCall);
             }
         }
 
@@ -236,46 +78,239 @@ public class SpanTagsCompiler : ISpanTagsCompiler
             ? Expression.Block(bodyExpressions)
             : Expression.Empty();
 
-        var lambda = Expression.Lambda<Action<Activity, object?[]>>(block, activityParam, argsParam);
-        return lambda.Compile();
+        return Expression.Lambda<Action<Activity, object?, object?[]>>(
+            block, activityParam, targetParam, argsParam).Compile();
     }
 
-    private Expression BuildValueExpression(TagSpec spec, ParameterInfo[] parameters, Expression argsParam)
+    /// <summary>
+    /// Parses a single tag definition and resolves parameter names against the given parameter list.
+    /// </summary>
+    private static TagSpec ParseTag(string definition, ParameterInfo[] parameters)
     {
-        if (spec.IsConstant) return Expression.Constant(spec.ConstantValue, typeof(object));
+        var (key, valueExpr, isOptional) = ParseKeyAndOptionalFlag(definition);
+        var (isConstant, constantValue, paramName, propertyPath, asJson, isThisReference) =
+            ParseValueExpression(valueExpr, definition);
 
-        var paramType = parameters[spec.ParamIndex].ParameterType;
-        var argAccess = Expression.ArrayIndex(argsParam, Expression.Constant(spec.ParamIndex));
-        Expression current = Expression.Convert(argAccess, paramType);
+        if (string.IsNullOrWhiteSpace(key))
+            throw new FormatException($"Tag key cannot be empty: {definition}");
 
-        if (spec.PropertyPath != null)
+        if (isConstant) return TagSpec.Constant(key, constantValue, asJson, isOptional);
+        if (isThisReference) return TagSpec.ThisReference(key, propertyPath, asJson, isOptional);
+
+        var paramIndex = ResolveParamIndex(paramName, parameters, definition);
+        return TagSpec.Parameter(key, paramIndex, propertyPath, asJson, isOptional);
+    }
+
+    private static (string key, string valueExpr, bool isOptional) ParseKeyAndOptionalFlag(string definition)
+    {
+        var optionalEqIndex = definition.IndexOf("?=", StringComparison.Ordinal);
+        var normalEqIndex = definition.IndexOf('=');
+
+        if (optionalEqIndex >= 0)
         {
-            current = spec.PropertyPath.Aggregate(current, Expression.PropertyOrField);
+            var key = definition[..optionalEqIndex].Trim();
+            var valueExpr = definition[(optionalEqIndex + 2)..].Trim();
+            return (key, valueExpr, true);
+        }
+
+        if (normalEqIndex < 0)
+            throw new FormatException(
+                $"Label definition must be of `<key> (?)= <value> <options>` format: {definition}");
+        {
+            var key = definition[..normalEqIndex].Trim();
+            var valueExpr = definition[(normalEqIndex + 1)..].Trim();
+            return (key, valueExpr, false);
+        }
+    }
+
+    private static (bool isConstant, object? constantValue, string? paramName, string[]? propertyPath, bool asJson, bool
+        isThisReference)
+        ParseValueExpression(string valueExpr, string fullDefinition)
+    {
+        const string asJsonSuffix = " as json";
+        var asJson = valueExpr.EndsWith(asJsonSuffix, StringComparison.OrdinalIgnoreCase);
+        if (asJson)
+            valueExpr = valueExpr[..^asJsonSuffix.Length].TrimEnd();
+
+        if (TryParseConstant(valueExpr, out var constantValue))
+            return (true, constantValue, null, null, asJson, false);
+
+        if (!valueExpr.StartsWith('{') || !valueExpr.EndsWith('}') || valueExpr.Length < 3)
+            throw new FormatException(
+                $"Unable to parse value expression: '{valueExpr}', at definition: {fullDefinition}");
+
+        var inner = valueExpr[1..^1].Trim();
+        if (inner.Length == 0)
+            throw new FormatException($"Interpolation tag cannot be empty: {fullDefinition}");
+
+        if (inner == "this")
+        {
+            return (false, null, null, Array.Empty<string>(), asJson, true);
+        }
+
+        if (inner.StartsWith("this.", StringComparison.Ordinal))
+        {
+            var propertyPath = inner[5..].Split('.');
+            return (false, null, null, propertyPath, asJson, true);
+        }
+
+        var dotIndex = inner.IndexOf('.');
+        string paramName;
+        string[]? propertyPathParam = null;
+
+        if (dotIndex > 0)
+        {
+            paramName = inner[..dotIndex];
+            propertyPathParam = inner[(dotIndex + 1)..].Split('.');
+        }
+        else
+        {
+            paramName = inner;
+        }
+
+        return (false, null, paramName, propertyPathParam, asJson, false);
+    }
+
+    private static bool TryParseConstant(string expr, out object? value)
+    {
+        // string literal
+        if (expr.StartsWith('\'') && expr.EndsWith('\'') && expr.Length >= 2)
+        {
+            value = expr[1..^1].Replace("\\'", "'");
+            return true;
+        }
+
+        // null, true, false
+        if (expr.Equals("null", StringComparison.OrdinalIgnoreCase))
+        {
+            value = null;
+            return true;
+        }
+
+        if (expr.Equals("true", StringComparison.OrdinalIgnoreCase))
+        {
+            value = true;
+            return true;
+        }
+
+        if (expr.Equals("false", StringComparison.OrdinalIgnoreCase))
+        {
+            value = false;
+            return true;
+        }
+
+        // integer
+        if (long.TryParse(expr, out var longVal) && expr == longVal.ToString())
+        {
+            value = longVal;
+            return true;
+        }
+
+        // floating point
+        if (double.TryParse(expr, NumberStyles.Float, CultureInfo.InvariantCulture, out var doubleVal))
+        {
+            value = doubleVal;
+            return true;
+        }
+
+        value = null;
+        return false;
+    }
+
+    private static int ResolveParamIndex(string? paramName, ParameterInfo[] parameters, string fullDefinition)
+    {
+        for (var i = 0; i < parameters.Length; i++)
+        {
+            if (string.Equals(parameters[i].Name, paramName, StringComparison.Ordinal)) return i;
+        }
+
+        throw new FormatException($"Method parameter '{paramName}' not found, at definition: {fullDefinition}");
+    }
+
+    private Expression BuildValueExpression(
+        TagSpec spec, ParameterInfo[] parameters, Expression argsParam,
+        Expression targetParam, Type declaringType)
+    {
+        if (spec.IsConstant)
+            return Expression.Constant(spec.ConstantValue, typeof(object));
+
+        Expression current;
+
+        if (spec.IsThisReference)
+        {
+            current = Expression.Convert(targetParam, declaringType);
+        }
+        else
+        {
+            var paramType = parameters[spec.ParamIndex].ParameterType;
+            var argAccess = Expression.ArrayIndex(argsParam, Expression.Constant(spec.ParamIndex));
+            current = Expression.Convert(argAccess, paramType);
+        }
+
+        if (spec.PropertyPath is { Length: > 0 })
+        {
+            foreach (var memberName in spec.PropertyPath)
+            {
+                if (spec.IsThisReference)
+                {
+                    var member = FindInstanceMember(current.Type, memberName);
+                    current = member switch
+                    {
+                        PropertyInfo p => Expression.Property(current, p),
+                        FieldInfo f => Expression.Field(current, f),
+                        _ => throw new InvalidOperationException($"Unsupported member type: {member.MemberType}")
+                    };
+                }
+                else
+                {
+                    current = Expression.PropertyOrField(current, memberName);
+                }
+            }
         }
 
         if (spec.AsJson)
-        {
-            var serializeMethod = typeof(JsonSerializer).GetMethod(
-                nameof(JsonSerializer.Serialize),
-                [typeof(object), typeof(Type), typeof(JsonSerializerOptions)]);
+            current = SerializeToJson(current);
 
-            if (serializeMethod == null)
-                throw new InvalidOperationException(
-                    "Unable to find the method `JsonSerializer.Serialize(object, Type, JsonSerializerOptions)`");
-
-            var valueAsObject = Expression.Convert(current, typeof(object));
-            var typeExpr = Expression.Constant(typeof(object), typeof(Type));
-            var optionsExpr = Expression.Constant(_jsonSerializerOptions, typeof(JsonSerializerOptions));
-
-            current = Expression.Call(
-                serializeMethod,
-                valueAsObject,
-                typeExpr,
-                optionsExpr);
-        }
-
-        if (current.Type.IsValueType) current = Expression.Convert(current, typeof(object));
+        if (current.Type.IsValueType)
+            current = Expression.Convert(current, typeof(object));
 
         return current;
+    }
+
+    private static MemberInfo FindInstanceMember(Type type, string memberName)
+    {
+        const BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+        var current = type;
+        while (current != null)
+        {
+            var property = current.GetProperty(memberName, flags);
+            if (property != null) return property;
+
+            var field = current.GetField(memberName, flags);
+            if (field != null) return field;
+
+            current = current.BaseType;
+        }
+
+        throw new MissingMemberException($"Member '{memberName}' not found on type {type} or its base types.");
+    }
+
+    private MethodCallExpression SerializeToJson(Expression value)
+    {
+        var serializeMethod = typeof(JsonSerializer).GetMethod(
+            nameof(JsonSerializer.Serialize),
+            [typeof(object), typeof(Type), typeof(JsonSerializerOptions)]);
+
+        if (serializeMethod == null)
+        {
+            throw new InvalidOperationException(
+                "Unable to find the method `JsonSerializer.Serialize(object, Type, JsonSerializerOptions)`");
+        }
+
+        var valueAsObject = Expression.Convert(value, typeof(object));
+        var typeExpr = Expression.Constant(typeof(object), typeof(Type));
+        var optionsExpr = Expression.Constant(_jsonSerializerOptions, typeof(JsonSerializerOptions));
+
+        return Expression.Call(serializeMethod, valueAsObject, typeExpr, optionsExpr);
     }
 }

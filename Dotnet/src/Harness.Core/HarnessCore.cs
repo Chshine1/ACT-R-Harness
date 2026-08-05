@@ -16,7 +16,6 @@ public class HarnessCore(
 
     public ILogger Logger => logger;
 
-    [TraceSpan]
     public async Task<StepResult> StepAsync(CancellationToken cancellationToken = default)
     {
         var bufferStatesBefore = _modules.Select(module => module.GetBufferState()).ToList();

@@ -34,7 +34,7 @@ public sealed class TraceSpanAttribute : OnMethodBoundaryAspect
     /// <summary>
     /// Cache of compiled tag‑setter delegates keyed by method.
     /// </summary>
-    private static readonly ConcurrentDictionary<MethodBase, Action<Activity, object?[]>> TagSetters = new();
+    private static readonly ConcurrentDictionary<MethodBase, Action<Activity, object?, object?[]>> TagSetters = new();
 
     /// <summary>
     /// Cache of <see cref="ISpanTagsCompiler"/> instances keyed by compiler <see cref="Type"/>.
@@ -60,20 +60,20 @@ public sealed class TraceSpanAttribute : OnMethodBoundaryAspect
     public string[]? Tags { get; }
 
     /// <summary>
-    /// Initialises a new instance of the <see cref="TraceSpanAttribute"/>.
+    /// Initializes a new instance of the <see cref="TraceSpanAttribute"/>.
     /// </summary>
     public TraceSpanAttribute()
     {
     }
 
     /// <summary>
-    /// Initialises a new instance with a custom span name.
+    /// Initializes a new instance with a custom span name.
     /// </summary>
     /// <param name="spanName">The name for the created span.</param>
     public TraceSpanAttribute(string spanName) : this() => SpanName = spanName;
 
     /// <summary>
-    /// Initialises a new instance with a custom span name and an array of tag definitions.
+    /// Initializes a new instance with a custom span name and an array of tag definitions.
     /// </summary>
     /// <param name="spanName">The name for the created span.</param>
     /// <param name="tags">Tag definitions (see class remarks for syntax).</param>
@@ -106,14 +106,14 @@ public sealed class TraceSpanAttribute : OnMethodBoundaryAspect
         var method = args.Method;
         var activity = Source.StartActivity(SpanName ?? GetSpanName(method));
 
-        if (Tags is { Length: > 0 })
+        if (Tags is { Length: > 0 } && activity is not null)
         {
             var setter = TagSetters.GetOrAdd(method, m =>
             {
                 var compiler = GetCompiler(CompilerType);
                 return compiler.CompileAllTags(m, Tags);
             });
-            if (activity is not null) setter(activity, args.Arguments);
+            setter(activity, args.Instance, args.Arguments);
         }
 
         args.MethodExecutionTag = new SpanState
