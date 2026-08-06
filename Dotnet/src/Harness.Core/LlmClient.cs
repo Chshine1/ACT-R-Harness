@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.ClientModel;
 using System.Text;
 using System.Text.Json;
@@ -45,6 +46,16 @@ public class LlmClient : IProvideLogger
         string system,
         CancellationToken cancellationToken = default)
     {
+        Activity.Current?.SetTag(TracingModel.Tags.LlmPayloadType, userData?.GetType().Name ?? "null");
+        TracingModel.AddEvent(
+            TracingModel.Events.LlmRequestSubmitted,
+            new[]
+            {
+                new KeyValuePair<string, object?>(
+                    TracingModel.Tags.LlmPayloadType,
+                    userData?.GetType().Name ?? "null")
+            });
+
         var messages = new List<ChatMessage>
         {
             new SystemChatMessage(system),
@@ -80,6 +91,14 @@ public class LlmClient : IProvideLogger
         }
 
         var fullContent = stringBuilder.ToString();
+        TracingModel.AddEvent(
+            TracingModel.Events.LlmResponseReceived,
+            new[]
+            {
+                new KeyValuePair<string, object?>(
+                    TracingModel.Tags.LlmResponseLength,
+                    fullContent.Length)
+            });
 
         if (string.IsNullOrWhiteSpace(fullContent))
         {
@@ -93,6 +112,15 @@ public class LlmClient : IProvideLogger
         }
         catch (JsonException)
         {
+            TracingModel.AddEvent(
+                TracingModel.Events.LlmResponseInvalidJson,
+                new[]
+                {
+                    new KeyValuePair<string, object?>(
+                        TracingModel.Tags.LlmResponsePreview,
+                        fullContent.Length > 200 ? fullContent[..200] : fullContent)
+                });
+
             if (_logger.IsEnabled(LogLevel.Warning))
             {
                 _logger.LogWarning("LLM response was not valid JSON. Preview: {Preview}",

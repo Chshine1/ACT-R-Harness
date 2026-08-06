@@ -87,6 +87,21 @@ public class ProceduralMemory : IProceduralMemory, IProvideLogger
                 .OrderByDescending(rule => rule.Utility)
                 .ThenBy(rule => rule.Id, StringComparer.Ordinal)
                 .First();
+
+            TracingModel.AddEvent(
+                TracingModel.Events.RuleSelected,
+                new[]
+                {
+                    new KeyValuePair<string, object?>(
+                        TracingModel.Tags.RuleId,
+                        selectedRule.Id),
+                    new KeyValuePair<string, object?>(
+                        TracingModel.Tags.RuleCandidateCount,
+                        applicableRules.Count),
+                    new KeyValuePair<string, object?>(
+                        TracingModel.Tags.RuleSelectionMode,
+                        "deterministic")
+                });
         }
         else
         {
@@ -113,6 +128,21 @@ public class ProceduralMemory : IProceduralMemory, IProvideLogger
                     break;
                 }
             }
+
+            TracingModel.AddEvent(
+                TracingModel.Events.RuleSelected,
+                new[]
+                {
+                    new KeyValuePair<string, object?>(
+                        TracingModel.Tags.RuleId,
+                        selectedRule.Id),
+                    new KeyValuePair<string, object?>(
+                        TracingModel.Tags.RuleCandidateCount,
+                        applicableRules.Count),
+                    new KeyValuePair<string, object?>(
+                        TracingModel.Tags.RuleSelectionMode,
+                        "stochastic")
+                });
         }
 
         _lastRuleId = selectedRule.Id;

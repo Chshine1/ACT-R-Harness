@@ -23,16 +23,25 @@ public class HarnessRunner(
 {
     private readonly HarnessOptions _options = options.Value;
     private readonly IReadOnlyCollection<ITrainingLifecycle> _trainingLifecycles = trainingLifecycles.ToHashSet();
+    private readonly string _runId = Guid.NewGuid().ToString("N");
 
     public ILogger Logger => logger;
 
-    [TraceSpan("TrainingSession",
+    [TraceSpan(TracingModel.Spans.Run,
+        "run.id = {this._runId}",
         "harness.max_epochs = {this._options.MaxEpochs}",
         "harness.max_steps_per_epoch = {this._options.MaxStepsPerEpoch}")]
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
         try
         {
+            TracingModel.AddEvent(
+                TracingModel.Events.RunStarted,
+                new[]
+                {
+                    new KeyValuePair<string, object?>(TracingModel.Tags.RunId, _runId)
+                });
+
             for (var epoch = 0; epoch < _options.MaxEpochs; epoch++)
             {
                 var capturedEpoch = epoch;
@@ -42,6 +51,13 @@ public class HarnessRunner(
 
                 await RunEpochAsync(epoch, ct);
             }
+
+            TracingModel.AddEvent(
+                TracingModel.Events.RunCompleted,
+                new[]
+                {
+                    new KeyValuePair<string, object?>(TracingModel.Tags.RunId, _runId)
+                });
         }
         finally
         {
@@ -52,25 +68,61 @@ public class HarnessRunner(
     [TraceSpan("Harness.Epoch", "epoch.index={epochIndex}")]
     private async Task RunEpochAsync([UsedImplicitly] int epochIndex, CancellationToken ct)
     {
+        TracingModel.AddEvent(
+            TracingModel.Events.EpochStarted,
+            new[]
+            {
+                new KeyValuePair<string, object?>(TracingModel.Tags.EpochIndex, epochIndex)
+            });
+
         for (var steps = 0; steps < _options.MaxStepsPerEpoch && !ct.IsCancellationRequested; steps++)
         {
             ct.ThrowIfCancellationRequested();
-            await RunSingleStepAsync(steps, ct);
+            await RunSingleStepAsync(epochIndex, steps, ct);
         }
+
+        TracingModel.AddEvent(
+            TracingModel.Events.EpochCompleted,
+            new[]
+            {
+                new KeyValuePair<string, object?>(TracingModel.Tags.EpochIndex, epochIndex)
+            });
     }
 
-    [TraceSpan("Harness.Step", "step.index={stepIndex}")]
-    private async Task RunSingleStepAsync([UsedImplicitly] int stepIndex, CancellationToken ct)
+    [TraceSpan(TracingModel.Spans.Step,
+        "epoch.index = {epochIndex}",
+        "step.index = {stepIndex}")]
+    private async Task RunSingleStepAsync(
+        [UsedImplicitly] int epochIndex,
+        [UsedImplicitly] int stepIndex,
+        CancellationToken ct)
     {
+        TracingModel.AddEvent(
+            TracingModel.Events.StepStarted,
+            new[]
+            {
+                new KeyValuePair<string, object?>(TracingModel.Tags.EpochIndex, epochIndex),
+                new KeyValuePair<string, object?>(TracingModel.Tags.StepIndex, stepIndex)
+            });
+
+        Activity.Current?.SetTag(TracingModel.Tags.EpochIndex, epochIndex);
+        Activity.Current?.SetTag(TracingModel.Tags.StepIndex, stepIndex);
         var lastResult = await core.StepAsync(ct);
 
         if (lastResult.IsTerminal)
         {
-            Activity.Current?.AddEvent(new ActivityEvent("step.terminated",
-                tags: new ActivityTagsCollection
+            TracingModel.MarkTerminal(Activity.Current, lastResult.StopReason);
+        }
+        else
+        {
+            TracingModel.AddEvent(
+                TracingModel.Events.StepCompleted,
+                new[]
                 {
-                    { "step.stop_reason", lastResult.StopReason }
-                }));
+                    new KeyValuePair<string, object?>(
+                        TracingModel.Tags.StopReason,
+                        lastResult.StopReason)
+                });
         }
 
         await rewardService.ComputeRewardAsync(ct);
