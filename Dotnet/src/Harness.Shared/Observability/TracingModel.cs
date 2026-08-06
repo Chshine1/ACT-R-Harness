@@ -113,6 +113,10 @@ public static class TracingModel
         if (boundary is not null)
         {
             tags[Tags.ObservabilityBoundary] = boundary;
+            if (!exception.Data.Contains(Tags.ObservabilityBoundary))
+            {
+                exception.Data[Tags.ObservabilityBoundary] = boundary;
+            }
         }
 
         AddEvent(activity, Events.Exception, tags);
@@ -122,6 +126,11 @@ public static class TracingModel
     public static void RecordException(Exception exception, string? boundary = null)
     {
         RecordException(Activity.Current, exception, boundary);
+    }
+
+    public static void RecordCancellation(Activity? activity)
+    {
+        activity?.SetStatus(ActivityStatusCode.Unset);
     }
 
     public static void MarkTerminal(Activity? activity, string stopReason)

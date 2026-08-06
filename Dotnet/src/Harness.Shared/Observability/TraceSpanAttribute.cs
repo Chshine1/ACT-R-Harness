@@ -103,7 +103,8 @@ public sealed class TraceSpanAttribute : OnMethodBoundaryAspect
     {
         var method = args.Method;
         var parent = Activity.Current;
-        var activity = TracingModel.StartActivity(SpanName ?? GetSpanName(method));
+        var spanName = SpanName ?? GetSpanName(method);
+        var activity = TracingModel.StartActivity(spanName);
 
         if (activity is not null
             && parent?.GetTagItem(TracingModel.Tags.RunId) is { } runId)
@@ -123,7 +124,8 @@ public sealed class TraceSpanAttribute : OnMethodBoundaryAspect
 
         args.MethodExecutionTag = new SpanState
         {
-            Activity = activity
+            Activity = activity,
+            Boundary = spanName
         };
     }
 
@@ -144,7 +146,7 @@ public sealed class TraceSpanAttribute : OnMethodBoundaryAspect
                 }
                 else if (t.IsCanceled)
                 {
-                    state.SetError(new TaskCanceledException("The traced task was canceled."));
+                    state.SetCanceled();
                 }
                 else
                 {
@@ -173,6 +175,10 @@ public sealed class TraceSpanAttribute : OnMethodBoundaryAspect
         {
             state.SetOk();
         }
+        else if (exception is OperationCanceledException)
+        {
+            state.SetCanceled();
+        }
         else
         {
             state.SetError(exception);
@@ -187,6 +193,7 @@ public sealed class TraceSpanAttribute : OnMethodBoundaryAspect
     private sealed class SpanState
     {
         public Activity? Activity;
+        public string? Boundary;
         private bool _completed;
 
         public void SetOk()
@@ -196,11 +203,18 @@ public sealed class TraceSpanAttribute : OnMethodBoundaryAspect
             Activity?.SetStatus(ActivityStatusCode.Ok);
         }
 
+        public void SetCanceled()
+        {
+            if (_completed) return;
+            _completed = true;
+            TracingModel.RecordCancellation(Activity);
+        }
+
         public void SetError(Exception exception)
         {
             if (_completed) return;
             _completed = true;
-            TracingModel.RecordException(Activity, exception);
+            TracingModel.RecordException(Activity, exception, Boundary);
         }
 
         public void DisposeActivity()

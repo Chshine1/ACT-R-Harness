@@ -2,6 +2,7 @@ using Harness.Codebase.Configuration;
 using Harness.Core.Configuration;
 using Harness.Core.Extensions;
 using Harness.Host.Options;
+using Harness.Shared.Observability;
 using JetBrains.Annotations;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -32,6 +33,7 @@ public class Program
                 services.Configure<LlmClientOptions>(context.Configuration.GetSection(LlmClientOptions.Section));
 
                 services.AddHarnessCore();
+                services.AddSingleton<RunReportWriter>();
                 services.AddHostedService<HarnessRunner>();
             })
             .Build();

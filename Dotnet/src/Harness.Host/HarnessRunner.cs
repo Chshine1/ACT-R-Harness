@@ -18,7 +18,8 @@ public class HarnessRunner(
     IRewardService rewardService,
     IHostApplicationLifetime applicationLifetime,
     IOptions<HarnessOptions> options,
-    ILogger<HarnessRunner> logger)
+    ILogger<HarnessRunner> logger,
+    RunReportWriter reportWriter)
     : BackgroundService, IProvideLogger
 {
     private readonly HarnessOptions _options = options.Value;
@@ -33,6 +34,10 @@ public class HarnessRunner(
         "harness.max_steps_per_epoch = {this._options.MaxStepsPerEpoch}")]
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
+        var reportBuilder = new RunReportBuilder(_runId, DateTimeOffset.UtcNow);
+        var status = "completed";
+        var stopReason = "completed";
+
         try
         {
             TracingModel.AddEvent(
@@ -63,7 +68,23 @@ public class HarnessRunner(
                     _trainingLifecycles.Select(t => t.OnEpochStartedAsync(new EpochContext(capturedEpoch), ct));
                 await Task.WhenAll(lifecycles);
 
-                await RunEpochAsync(epoch, ct);
+                var terminalResult = await RunEpochAsync(epoch, ct, reportBuilder);
+                if (terminalResult is null)
+                {
+                    continue;
+                }
+
+                stopReason = terminalResult.StopReason;
+                status = terminalResult.StopReason == "error"
+                    ? "failed"
+                    : "completed";
+                break;
+            }
+
+            Activity.Current?.SetTag(TracingModel.Tags.StopReason, stopReason);
+            if (status == "failed")
+            {
+                Activity.Current?.SetStatus(ActivityStatusCode.Error, stopReason);
             }
 
             TracingModel.AddEvent(
@@ -79,11 +100,21 @@ public class HarnessRunner(
                 new[]
                 {
                     new KeyValuePair<string, object?>(LoggingModel.Fields.RunId, _runId),
-                    new KeyValuePair<string, object?>(LoggingModel.Fields.Success, true)
+                    new KeyValuePair<string, object?>(
+                        LoggingModel.Fields.ReportStatus,
+                        status),
+                    new KeyValuePair<string, object?>(
+                        LoggingModel.Fields.StopReason,
+                        stopReason),
+                    new KeyValuePair<string, object?>(
+                        LoggingModel.Fields.Success,
+                        status == "completed")
                 });
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
+            status = "canceled";
+            stopReason = "canceled";
             LoggingModel.Log(
                 logger,
                 LogLevel.Information,
@@ -91,13 +122,22 @@ public class HarnessRunner(
                 new[]
                 {
                     new KeyValuePair<string, object?>(LoggingModel.Fields.RunId, _runId),
-                    new KeyValuePair<string, object?>(LoggingModel.Fields.StopReason, "canceled"),
+                    new KeyValuePair<string, object?>(
+                        LoggingModel.Fields.ReportStatus,
+                        status),
+                    new KeyValuePair<string, object?>(
+                        LoggingModel.Fields.StopReason,
+                        stopReason),
                     new KeyValuePair<string, object?>(LoggingModel.Fields.Success, false)
                 });
             throw;
         }
         catch (Exception exception)
         {
+            status = "failed";
+            stopReason = "error";
+            reportBuilder.RecordFailure(
+                FailureReport.FromException(exception, nameof(ExecuteAsync)));
             LoggingModel.LogException(
                 logger,
                 nameof(ExecuteAsync),
@@ -105,19 +145,35 @@ public class HarnessRunner(
                 new[]
                 {
                     new KeyValuePair<string, object?>(LoggingModel.Fields.RunId, _runId),
-                    new KeyValuePair<string, object?>(LoggingModel.Fields.StopReason, "error"),
+                    new KeyValuePair<string, object?>(
+                        LoggingModel.Fields.ReportStatus,
+                        status),
+                    new KeyValuePair<string, object?>(
+                        LoggingModel.Fields.StopReason,
+                        stopReason),
                     new KeyValuePair<string, object?>(LoggingModel.Fields.Success, false)
                 });
             throw;
         }
         finally
         {
+            Activity.Current?.SetTag(TracingModel.Tags.StopReason, stopReason);
+            reportWriter.Write(
+                reportBuilder.Build(
+                    status,
+                    stopReason,
+                    Activity.Current,
+                    DateTimeOffset.UtcNow),
+                _options.ArtifactRoot);
             applicationLifetime.StopApplication();
         }
     }
 
     [TraceSpan("Harness.Epoch", "epoch.index={epochIndex}")]
-    private async Task RunEpochAsync([UsedImplicitly] int epochIndex, CancellationToken ct)
+    private async Task<StepResult?> RunEpochAsync(
+        [UsedImplicitly] int epochIndex,
+        CancellationToken ct,
+        RunReportBuilder reportBuilder)
     {
         TracingModel.AddEvent(
             TracingModel.Events.EpochStarted,
@@ -134,10 +190,16 @@ public class HarnessRunner(
                 new KeyValuePair<string, object?>(LoggingModel.Fields.Epoch, epochIndex)
             });
 
+        StepResult? terminalResult = null;
         for (var steps = 0; steps < _options.MaxStepsPerEpoch && !ct.IsCancellationRequested; steps++)
         {
             ct.ThrowIfCancellationRequested();
-            await RunSingleStepAsync(epochIndex, steps, ct);
+            var stepResult = await RunSingleStepAsync(epochIndex, steps, ct, reportBuilder);
+            if (stepResult.IsTerminal)
+            {
+                terminalResult = stepResult;
+                break;
+            }
         }
 
         TracingModel.AddEvent(
@@ -154,15 +216,17 @@ public class HarnessRunner(
             {
                 new KeyValuePair<string, object?>(LoggingModel.Fields.Epoch, epochIndex)
             });
+        return terminalResult;
     }
 
     [TraceSpan(TracingModel.Spans.Step,
         "epoch.index = {epochIndex}",
         "step.index = {stepIndex}")]
-    private async Task RunSingleStepAsync(
+    private async Task<StepResult> RunSingleStepAsync(
         [UsedImplicitly] int epochIndex,
         [UsedImplicitly] int stepIndex,
-        CancellationToken ct)
+        CancellationToken ct,
+        RunReportBuilder reportBuilder)
     {
         TracingModel.AddEvent(
             TracingModel.Events.StepStarted,
@@ -183,8 +247,19 @@ public class HarnessRunner(
 
         Activity.Current?.SetTag(TracingModel.Tags.EpochIndex, epochIndex);
         Activity.Current?.SetTag(TracingModel.Tags.StepIndex, stepIndex);
+        reportBuilder.SetCurrentStep(epochIndex, stepIndex);
         var lastResult = await core.StepAsync(ct);
         var operations = lastResult.Operations ?? Array.Empty<OperationTrace>();
+        reportBuilder.RecordStep(
+            epochIndex,
+            stepIndex,
+            lastResult.SelectedRuleId,
+            lastResult.StopReason,
+            success: lastResult.StopReason != "error");
+        if (lastResult.Failure is not null)
+        {
+            reportBuilder.RecordFailure(lastResult.Failure, epochIndex, stepIndex);
+        }
         LoggingModel.Log(
             logger,
             LogLevel.Information,
@@ -216,21 +291,21 @@ public class HarnessRunner(
         if (lastResult.IsTerminal)
         {
             TracingModel.MarkTerminal(Activity.Current, lastResult.StopReason);
+            return lastResult;
         }
-        else
-        {
-            TracingModel.AddEvent(
-                TracingModel.Events.StepCompleted,
-                new[]
-                {
-                    new KeyValuePair<string, object?>(
-                        TracingModel.Tags.StopReason,
-                        lastResult.StopReason)
-                });
-        }
+
+        TracingModel.AddEvent(
+            TracingModel.Events.StepCompleted,
+            new[]
+            {
+                new KeyValuePair<string, object?>(
+                    TracingModel.Tags.StopReason,
+                    lastResult.StopReason)
+            });
 
         await rewardService.ComputeRewardAsync(ct);
         await clock.TickAsync(new StepState(Reward: 0, Training: true), ct);
         await Task.Delay(10, ct);
+        return lastResult;
     }
 }

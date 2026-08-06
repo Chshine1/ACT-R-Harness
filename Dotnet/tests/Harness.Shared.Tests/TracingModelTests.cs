@@ -29,6 +29,20 @@ public sealed class TracingModelTests
         Assert.True(tags.ContainsKey("exception.stacktrace"));
     }
 
+    [Fact]
+    public void RecordCancellationDoesNotCreateExceptionOrErrorStatus()
+    {
+        using var listener = CreateListener();
+        using var activity = TracingModel.StartActivity("Harness.Test");
+
+        Assert.NotNull(activity);
+
+        TracingModel.RecordCancellation(activity);
+
+        Assert.NotEqual(ActivityStatusCode.Error, activity!.Status);
+        Assert.DoesNotContain(activity.Events, traceEvent => traceEvent.Name == "exception");
+    }
+
     private static ActivityListener CreateListener()
     {
         var listener = new ActivityListener

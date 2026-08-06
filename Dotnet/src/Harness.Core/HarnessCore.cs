@@ -199,12 +199,17 @@ public class HarnessCore(
                 SelectedRuleId: action.RuleId,
                 Operations: operationTraces);
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception exception)
         {
             TracingModel.RecordException(exception, nameof(StepAsync));
+            var failure = FailureReport.FromException(exception, nameof(StepAsync));
             LoggingModel.LogException(
                 logger,
-                nameof(StepAsync),
+                failure.Boundary,
                 exception,
                 new[]
                 {
@@ -218,7 +223,10 @@ public class HarnessCore(
                         LoggingModel.Fields.Success,
                         false)
                 });
-            return new StepResult(IsTerminal: true, StopReason: "error");
+            return new StepResult(
+                IsTerminal: true,
+                StopReason: "error",
+                Failure: failure);
         }
     }
 

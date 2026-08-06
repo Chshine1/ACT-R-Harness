@@ -26,6 +26,7 @@ public static class LoggingModel
         public const string LlmRequestSubmitted = TracingModel.Events.LlmRequestSubmitted;
         public const string LlmResponseReceived = TracingModel.Events.LlmResponseReceived;
         public const string LlmResponseInvalidJson = TracingModel.Events.LlmResponseInvalidJson;
+        public const string RunReportWritten = "harness.run.report.written";
         public const string Exception = TracingModel.Events.Exception;
     }
 
@@ -35,6 +36,8 @@ public static class LoggingModel
         public const string RunId = "run_id";
         public const string MaxEpochs = "max_epochs";
         public const string MaxStepsPerEpoch = "max_steps_per_epoch";
+        public const string ArtifactPath = "artifact_path";
+        public const string ReportStatus = "report_status";
         public const string TraceId = "trace_id";
         public const string SpanId = "span_id";
         public const string Epoch = "epoch";
