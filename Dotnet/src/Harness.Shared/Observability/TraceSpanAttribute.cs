@@ -28,8 +28,6 @@ namespace Harness.Shared.Observability;
 [UsedImplicitly(ImplicitUseTargetFlags.Members)]
 public sealed class TraceSpanAttribute : OnMethodBoundaryAspect
 {
-    private static readonly ActivitySource Source = new("ACTR.Harness");
-
     // TODO: Problems with generic method instances with the same base declaration?
     /// <summary>
     /// Cache of compiled tag‑setter delegates keyed by method.
@@ -104,7 +102,15 @@ public sealed class TraceSpanAttribute : OnMethodBoundaryAspect
     public override void OnEntry(MethodExecutionArgs args)
     {
         var method = args.Method;
-        var activity = Source.StartActivity(SpanName ?? GetSpanName(method));
+        var parent = Activity.Current;
+        var spanName = SpanName ?? GetSpanName(method);
+        var activity = TracingModel.StartActivity(spanName);
+
+        if (activity is not null
+            && parent?.GetTagItem(TracingModel.Tags.RunId) is { } runId)
+        {
+            activity.SetTag(TracingModel.Tags.RunId, runId);
+        }
 
         if (Tags is { Length: > 0 } && activity is not null)
         {
@@ -118,7 +124,8 @@ public sealed class TraceSpanAttribute : OnMethodBoundaryAspect
 
         args.MethodExecutionTag = new SpanState
         {
-            Activity = activity
+            Activity = activity,
+            Boundary = spanName
         };
     }
 
@@ -135,11 +142,11 @@ public sealed class TraceSpanAttribute : OnMethodBoundaryAspect
                 if (t.IsFaulted)
                 {
                     var ex = t.Exception?.InnerException ?? t.Exception;
-                    state.SetError(ex?.Message ?? "Error");
+                    state.SetError(ex ?? new InvalidOperationException("The traced task failed."));
                 }
                 else if (t.IsCanceled)
                 {
-                    state.SetError("Canceled");
+                    state.SetCanceled();
                 }
                 else
                 {
@@ -168,9 +175,13 @@ public sealed class TraceSpanAttribute : OnMethodBoundaryAspect
         {
             state.SetOk();
         }
+        else if (exception is OperationCanceledException)
+        {
+            state.SetCanceled();
+        }
         else
         {
-            state.SetError(exception.Message);
+            state.SetError(exception);
         }
 
         state.DisposeActivity();
@@ -182,6 +193,7 @@ public sealed class TraceSpanAttribute : OnMethodBoundaryAspect
     private sealed class SpanState
     {
         public Activity? Activity;
+        public string? Boundary;
         private bool _completed;
 
         public void SetOk()
@@ -191,11 +203,18 @@ public sealed class TraceSpanAttribute : OnMethodBoundaryAspect
             Activity?.SetStatus(ActivityStatusCode.Ok);
         }
 
-        public void SetError(string message)
+        public void SetCanceled()
         {
             if (_completed) return;
             _completed = true;
-            Activity?.SetStatus(ActivityStatusCode.Error, message);
+            TracingModel.RecordCancellation(Activity);
+        }
+
+        public void SetError(Exception exception)
+        {
+            if (_completed) return;
+            _completed = true;
+            TracingModel.RecordException(Activity, exception, Boundary);
         }
 
         public void DisposeActivity()

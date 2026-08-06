@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Linq.Expressions;
 using System.Reflection;
 using Google.Protobuf.WellKnownTypes;
@@ -99,7 +100,59 @@ public abstract class ModuleBase : IModule, IProvideLogger
         if (!_commandMap.TryGetValue(op.Command, out var cacheEntry))
             throw new InvalidOperationException($"Module '{ModuleId}' does not handle command '{op.Command}'.");
 
+        Activity.Current?.SetTag(TracingModel.Tags.ModuleId, ModuleId);
+        Activity.Current?.SetTag(TracingModel.Tags.OperationCommand, op.Command);
+        TracingModel.AddEvent(
+            TracingModel.Events.ModuleOperationStarted,
+            new[]
+            {
+                new KeyValuePair<string, object?>(
+                    TracingModel.Tags.ModuleId,
+                    ModuleId),
+                new KeyValuePair<string, object?>(
+                    TracingModel.Tags.OperationCommand,
+                    op.Command)
+            });
+        LoggingModel.Log(
+            Logger,
+            LogLevel.Debug,
+            LoggingModel.Events.ModuleOperationStarted,
+            new[]
+            {
+                new KeyValuePair<string, object?>(
+                    LoggingModel.Fields.ModuleId,
+                    ModuleId),
+                new KeyValuePair<string, object?>(
+                    LoggingModel.Fields.OperationCommand,
+                    op.Command)
+            });
+
         var hasParam = op.Params.Fields.Count > 0;
         cacheEntry.Action(this, hasParam ? op.Params : null);
+
+        TracingModel.AddEvent(
+            TracingModel.Events.ModuleOperationCompleted,
+            new[]
+            {
+                new KeyValuePair<string, object?>(
+                    TracingModel.Tags.ModuleId,
+                    ModuleId),
+                new KeyValuePair<string, object?>(
+                    TracingModel.Tags.OperationCommand,
+                    op.Command)
+            });
+        LoggingModel.Log(
+            Logger,
+            LogLevel.Debug,
+            LoggingModel.Events.ModuleOperationCompleted,
+            new[]
+            {
+                new KeyValuePair<string, object?>(
+                    LoggingModel.Fields.ModuleId,
+                    ModuleId),
+                new KeyValuePair<string, object?>(
+                    LoggingModel.Fields.OperationCommand,
+                    op.Command)
+            });
     }
 }

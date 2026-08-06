@@ -1,5 +1,6 @@
 using Harness.Abstractions.Actr;
 using Harness.Core.Configuration;
+using Harness.Shared.Observability;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -80,7 +81,19 @@ public class RulesLoader(
                 rawRule.TryGetValue("utility", out var utilityValue) ? Convert.ToDouble(utilityValue) : _options.DefaultUtility);
         }
 
-        logger.LogInformation("Loaded {RuleCount} rules from {Path}.", loadedRules.Count, path);
+        LoggingModel.Log(
+            logger,
+            LogLevel.Information,
+            LoggingModel.Events.RulesLoaded,
+            new[]
+            {
+                new KeyValuePair<string, object?>(
+                    LoggingModel.Fields.RuleCount,
+                    loadedRules.Count),
+                new KeyValuePair<string, object?>(
+                    LoggingModel.Fields.Path,
+                    path)
+            });
         return loadedRules;
     }
 
