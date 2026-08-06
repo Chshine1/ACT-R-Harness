@@ -4,5 +4,7 @@ public sealed record OperationTrace(string TargetModuleId, string Command, IRead
 
 public sealed record StepResult(
     bool IsTerminal,
-    string StopReason
+    string StopReason,
+    string? SelectedRuleId = null,
+    IReadOnlyList<OperationTrace>? Operations = null
 );

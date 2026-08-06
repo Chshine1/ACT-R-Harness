@@ -113,6 +113,19 @@ public abstract class ModuleBase : IModule, IProvideLogger
                     TracingModel.Tags.OperationCommand,
                     op.Command)
             });
+        LoggingModel.Log(
+            Logger,
+            LogLevel.Debug,
+            LoggingModel.Events.ModuleOperationStarted,
+            new[]
+            {
+                new KeyValuePair<string, object?>(
+                    LoggingModel.Fields.ModuleId,
+                    ModuleId),
+                new KeyValuePair<string, object?>(
+                    LoggingModel.Fields.OperationCommand,
+                    op.Command)
+            });
 
         var hasParam = op.Params.Fields.Count > 0;
         cacheEntry.Action(this, hasParam ? op.Params : null);
@@ -126,6 +139,19 @@ public abstract class ModuleBase : IModule, IProvideLogger
                     ModuleId),
                 new KeyValuePair<string, object?>(
                     TracingModel.Tags.OperationCommand,
+                    op.Command)
+            });
+        LoggingModel.Log(
+            Logger,
+            LogLevel.Debug,
+            LoggingModel.Events.ModuleOperationCompleted,
+            new[]
+            {
+                new KeyValuePair<string, object?>(
+                    LoggingModel.Fields.ModuleId,
+                    ModuleId),
+                new KeyValuePair<string, object?>(
+                    LoggingModel.Fields.OperationCommand,
                     op.Command)
             });
     }

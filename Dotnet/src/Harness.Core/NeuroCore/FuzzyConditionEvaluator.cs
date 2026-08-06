@@ -35,7 +35,16 @@ public class FuzzyConditionEvaluator(LlmClient llm, ILogger<FuzzyConditionEvalua
         var result = await llm.ChatJsonAsync(prompt, systemPrompt, cancellationToken);
         if (result is not JsonArray array)
         {
-            logger.LogWarning("Fuzzy condition evaluator returned a non-list payload.");
+            LoggingModel.Log(
+                logger,
+                LogLevel.Warning,
+                LoggingModel.Events.ConditionsInvalidPayload,
+                new[]
+                {
+                    new KeyValuePair<string, object?>(
+                        LoggingModel.Fields.ConditionCount,
+                        conditions.Count)
+                });
             return [];
         }
 

@@ -41,6 +41,20 @@ public class HarnessRunner(
                 {
                     new KeyValuePair<string, object?>(TracingModel.Tags.RunId, _runId)
                 });
+            LoggingModel.Log(
+                logger,
+                LogLevel.Information,
+                LoggingModel.Events.RunStarted,
+                new[]
+                {
+                    new KeyValuePair<string, object?>(LoggingModel.Fields.RunId, _runId),
+                    new KeyValuePair<string, object?>(
+                        LoggingModel.Fields.MaxEpochs,
+                        _options.MaxEpochs),
+                    new KeyValuePair<string, object?>(
+                        LoggingModel.Fields.MaxStepsPerEpoch,
+                        _options.MaxStepsPerEpoch)
+                });
 
             for (var epoch = 0; epoch < _options.MaxEpochs; epoch++)
             {
@@ -58,6 +72,43 @@ public class HarnessRunner(
                 {
                     new KeyValuePair<string, object?>(TracingModel.Tags.RunId, _runId)
                 });
+            LoggingModel.Log(
+                logger,
+                LogLevel.Information,
+                LoggingModel.Events.RunCompleted,
+                new[]
+                {
+                    new KeyValuePair<string, object?>(LoggingModel.Fields.RunId, _runId),
+                    new KeyValuePair<string, object?>(LoggingModel.Fields.Success, true)
+                });
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            LoggingModel.Log(
+                logger,
+                LogLevel.Information,
+                LoggingModel.Events.RunCompleted,
+                new[]
+                {
+                    new KeyValuePair<string, object?>(LoggingModel.Fields.RunId, _runId),
+                    new KeyValuePair<string, object?>(LoggingModel.Fields.StopReason, "canceled"),
+                    new KeyValuePair<string, object?>(LoggingModel.Fields.Success, false)
+                });
+            throw;
+        }
+        catch (Exception exception)
+        {
+            LoggingModel.LogException(
+                logger,
+                nameof(ExecuteAsync),
+                exception,
+                new[]
+                {
+                    new KeyValuePair<string, object?>(LoggingModel.Fields.RunId, _runId),
+                    new KeyValuePair<string, object?>(LoggingModel.Fields.StopReason, "error"),
+                    new KeyValuePair<string, object?>(LoggingModel.Fields.Success, false)
+                });
+            throw;
         }
         finally
         {
@@ -74,6 +125,14 @@ public class HarnessRunner(
             {
                 new KeyValuePair<string, object?>(TracingModel.Tags.EpochIndex, epochIndex)
             });
+        LoggingModel.Log(
+            logger,
+            LogLevel.Information,
+            LoggingModel.Events.EpochStarted,
+            new[]
+            {
+                new KeyValuePair<string, object?>(LoggingModel.Fields.Epoch, epochIndex)
+            });
 
         for (var steps = 0; steps < _options.MaxStepsPerEpoch && !ct.IsCancellationRequested; steps++)
         {
@@ -86,6 +145,14 @@ public class HarnessRunner(
             new[]
             {
                 new KeyValuePair<string, object?>(TracingModel.Tags.EpochIndex, epochIndex)
+            });
+        LoggingModel.Log(
+            logger,
+            LogLevel.Information,
+            LoggingModel.Events.EpochCompleted,
+            new[]
+            {
+                new KeyValuePair<string, object?>(LoggingModel.Fields.Epoch, epochIndex)
             });
     }
 
@@ -104,10 +171,47 @@ public class HarnessRunner(
                 new KeyValuePair<string, object?>(TracingModel.Tags.EpochIndex, epochIndex),
                 new KeyValuePair<string, object?>(TracingModel.Tags.StepIndex, stepIndex)
             });
+        LoggingModel.Log(
+            logger,
+            LogLevel.Debug,
+            LoggingModel.Events.StepStarted,
+            new[]
+            {
+                new KeyValuePair<string, object?>(LoggingModel.Fields.Epoch, epochIndex),
+                new KeyValuePair<string, object?>(LoggingModel.Fields.Step, stepIndex)
+            });
 
         Activity.Current?.SetTag(TracingModel.Tags.EpochIndex, epochIndex);
         Activity.Current?.SetTag(TracingModel.Tags.StepIndex, stepIndex);
         var lastResult = await core.StepAsync(ct);
+        var operations = lastResult.Operations ?? Array.Empty<OperationTrace>();
+        LoggingModel.Log(
+            logger,
+            LogLevel.Information,
+            LoggingModel.Events.StepSummary,
+            new[]
+            {
+                new KeyValuePair<string, object?>(LoggingModel.Fields.Epoch, epochIndex),
+                new KeyValuePair<string, object?>(LoggingModel.Fields.Step, stepIndex),
+                new KeyValuePair<string, object?>(
+                    LoggingModel.Fields.RuleId,
+                    lastResult.SelectedRuleId),
+                new KeyValuePair<string, object?>(
+                    LoggingModel.Fields.OperationCount,
+                    operations.Count),
+                new KeyValuePair<string, object?>(
+                    LoggingModel.Fields.Operations,
+                    operations),
+                new KeyValuePair<string, object?>(
+                    LoggingModel.Fields.StopReason,
+                    lastResult.StopReason),
+                new KeyValuePair<string, object?>(
+                    LoggingModel.Fields.Terminal,
+                    lastResult.IsTerminal),
+                new KeyValuePair<string, object?>(
+                    LoggingModel.Fields.Success,
+                    lastResult.StopReason != "error")
+            });
 
         if (lastResult.IsTerminal)
         {

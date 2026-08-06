@@ -55,6 +55,16 @@ public class LlmClient : IProvideLogger
                     TracingModel.Tags.LlmPayloadType,
                     userData?.GetType().Name ?? "null")
             });
+        LoggingModel.Log(
+            _logger,
+            LogLevel.Debug,
+            LoggingModel.Events.LlmRequestSubmitted,
+            new[]
+            {
+                new KeyValuePair<string, object?>(
+                    LoggingModel.Fields.PayloadType,
+                    userData?.GetType().Name ?? "null")
+            });
 
         var messages = new List<ChatMessage>
         {
@@ -62,22 +72,20 @@ public class LlmClient : IProvideLogger
             new UserChatMessage(JsonSerializer.Serialize(userData, SerializerOptions))
         };
 
-        ChatCompletion completion;
-        try
-        {
-            var response = await _chatClient.CompleteChatAsync(messages, cancellationToken: cancellationToken);
-            completion = response.Value;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "LLM request failed.");
-            throw;
-        }
+        var response = await _chatClient.CompleteChatAsync(messages, cancellationToken: cancellationToken);
+        var completion = response.Value;
 
         var content = completion.Content;
         if (content == null)
         {
-            _logger.LogWarning("LLM response content was empty.");
+            LoggingModel.Log(
+                _logger,
+                LogLevel.Warning,
+                LoggingModel.Events.LlmResponseReceived,
+                new[]
+                {
+                    new KeyValuePair<string, object?>(LoggingModel.Fields.ResponseLength, 0)
+                });
             return null;
         }
 
@@ -99,10 +107,27 @@ public class LlmClient : IProvideLogger
                     TracingModel.Tags.LlmResponseLength,
                     fullContent.Length)
             });
+        LoggingModel.Log(
+            _logger,
+            LogLevel.Debug,
+            LoggingModel.Events.LlmResponseReceived,
+            new[]
+            {
+                new KeyValuePair<string, object?>(
+                    LoggingModel.Fields.ResponseLength,
+                    fullContent.Length)
+            });
 
         if (string.IsNullOrWhiteSpace(fullContent))
         {
-            _logger.LogWarning("LLM response content was empty.");
+            LoggingModel.Log(
+                _logger,
+                LogLevel.Warning,
+                LoggingModel.Events.LlmResponseReceived,
+                new[]
+                {
+                    new KeyValuePair<string, object?>(LoggingModel.Fields.ResponseLength, 0)
+                });
             return null;
         }
 
@@ -120,12 +145,16 @@ public class LlmClient : IProvideLogger
                         TracingModel.Tags.LlmResponsePreview,
                         fullContent.Length > 200 ? fullContent[..200] : fullContent)
                 });
-
-            if (_logger.IsEnabled(LogLevel.Warning))
-            {
-                _logger.LogWarning("LLM response was not valid JSON. Preview: {Preview}",
-                    fullContent.Length > 200 ? fullContent[..200] : fullContent);
-            }
+            LoggingModel.Log(
+                _logger,
+                LogLevel.Warning,
+                LoggingModel.Events.LlmResponseInvalidJson,
+                new[]
+                {
+                    new KeyValuePair<string, object?>(
+                        LoggingModel.Fields.ResponsePreview,
+                        fullContent.Length > 200 ? fullContent[..200] : fullContent)
+                });
 
             return JsonValue.Create(fullContent);
         }

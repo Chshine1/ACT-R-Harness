@@ -81,30 +81,18 @@ public class ProceduralMemory : IProceduralMemory, IProvideLogger
         }
 
         RuleState selectedRule;
+        string selectionMode;
         if (_temperature <= 0)
         {
+            selectionMode = "deterministic";
             selectedRule = applicableRules
                 .OrderByDescending(rule => rule.Utility)
                 .ThenBy(rule => rule.Id, StringComparer.Ordinal)
                 .First();
-
-            TracingModel.AddEvent(
-                TracingModel.Events.RuleSelected,
-                new[]
-                {
-                    new KeyValuePair<string, object?>(
-                        TracingModel.Tags.RuleId,
-                        selectedRule.Id),
-                    new KeyValuePair<string, object?>(
-                        TracingModel.Tags.RuleCandidateCount,
-                        applicableRules.Count),
-                    new KeyValuePair<string, object?>(
-                        TracingModel.Tags.RuleSelectionMode,
-                        "deterministic")
-                });
         }
         else
         {
+            selectionMode = "stochastic";
             var maxUtility = applicableRules.Max(rule => rule.Utility);
             var weightedRules = applicableRules
                 .Select(rule => new
@@ -120,30 +108,46 @@ public class ProceduralMemory : IProceduralMemory, IProvideLogger
             selectedRule = weightedRules[^1].Rule;
 
             foreach (var weightedRule in weightedRules)
-            {
-                cumulative += weightedRule.Weight;
-                if (sample <= cumulative)
+                {
+                    cumulative += weightedRule.Weight;
+                    if (sample <= cumulative)
                 {
                     selectedRule = weightedRule.Rule;
-                    break;
+                        break;
+                    }
                 }
-            }
-
-            TracingModel.AddEvent(
-                TracingModel.Events.RuleSelected,
-                new[]
-                {
-                    new KeyValuePair<string, object?>(
-                        TracingModel.Tags.RuleId,
-                        selectedRule.Id),
-                    new KeyValuePair<string, object?>(
-                        TracingModel.Tags.RuleCandidateCount,
-                        applicableRules.Count),
-                    new KeyValuePair<string, object?>(
-                        TracingModel.Tags.RuleSelectionMode,
-                        "stochastic")
-                });
         }
+
+        TracingModel.AddEvent(
+            TracingModel.Events.RuleSelected,
+            new[]
+            {
+                new KeyValuePair<string, object?>(
+                    TracingModel.Tags.RuleId,
+                    selectedRule.Id),
+                new KeyValuePair<string, object?>(
+                    TracingModel.Tags.RuleCandidateCount,
+                    applicableRules.Count),
+                new KeyValuePair<string, object?>(
+                    TracingModel.Tags.RuleSelectionMode,
+                    selectionMode)
+            });
+        LoggingModel.Log(
+            _logger,
+            LogLevel.Debug,
+            LoggingModel.Events.RuleSelected,
+            new[]
+            {
+                new KeyValuePair<string, object?>(
+                    LoggingModel.Fields.RuleId,
+                    selectedRule.Id),
+                new KeyValuePair<string, object?>(
+                    LoggingModel.Fields.RuleCandidateCount,
+                    applicableRules.Count),
+                new KeyValuePair<string, object?>(
+                    LoggingModel.Fields.RuleSelectionMode,
+                    selectionMode)
+            });
 
         _lastRuleId = selectedRule.Id;
         return selectedRule.Action.Clone();
